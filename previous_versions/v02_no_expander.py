@@ -1,0 +1,207 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torchvision
+from torchvision import transforms
+from torch.utils.data import DataLoader
+import pytorch_lightning as pl
+import os
+from pytorch_lightning.loggers import WandbLogger
+
+# --------------------------------------------------------------------------
+# 1. Data Augmentation & Dataset Wrapper
+# --------------------------------------------------------------------------
+
+class TwoCropsTransform:
+    """Take two random augmented views of one image."""
+    def __init__(self, base_transform):
+        self.base_transform = base_transform
+
+    def __call__(self, x):
+        x1 = self.base_transform(x)
+        x2 = self.base_transform(x)
+        return [x1, x2]
+
+def get_mnist_transforms():
+    """Get the augmentation pipeline for VICReg pre-training on MNIST."""
+    return transforms.Compose([
+        transforms.RandomResizedCrop(28, scale=(0.5, 1.0)),
+        transforms.RandomApply([transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0))], p=0.5),
+        transforms.ToTensor(),
+        transforms.Normalize((0.1307,), (0.3081,))
+    ])
+
+# --------------------------------------------------------------------------
+# 2. Loss Function
+# --------------------------------------------------------------------------
+
+def off_diagonal(x):
+    """Return a flattened view of the off-diagonal elements of a square matrix."""
+    n, m = x.shape
+    assert n == m
+    return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
+
+class VICRegLoss(nn.Module):
+    """The VICReg loss function."""
+    def __init__(self, sim_coeff=25.0, std_coeff=25.0, cov_coeff=1.0):
+        super().__init__()
+        self.sim_coeff = sim_coeff
+        self.std_coeff = std_coeff
+        self.cov_coeff = cov_coeff
+
+    def forward(self, z_a, z_b):
+        batch_size, num_features = z_a.shape
+        sim_loss = F.mse_loss(z_a, z_b)
+        std_a = torch.sqrt(z_a.var(dim=0) + 1e-4)
+        std_b = torch.sqrt(z_b.var(dim=0) + 1e-4)
+        std_loss = torch.mean(F.relu(1 - std_a)) / 2 + torch.mean(F.relu(1 - std_b)) / 2
+        z_a = z_a - z_a.mean(dim=0)
+        z_b = z_b - z_b.mean(dim=0)
+        cov_a = (z_a.T @ z_a) / (batch_size - 1)
+        cov_b = (z_b.T @ z_b) / (batch_size - 1)
+        cov_loss = (off_diagonal(cov_a).pow_(2).sum() / num_features +
+                    off_diagonal(cov_b).pow_(2).sum() / num_features)
+        loss = (self.sim_coeff * sim_loss +
+                self.std_coeff * std_loss +
+                self.cov_coeff * cov_loss)
+        return loss, sim_loss, std_loss, cov_loss
+
+# --------------------------------------------------------------------------
+# 3. Architecture (Encoder Only)
+# --------------------------------------------------------------------------
+
+class SmallCNNEncoder(nn.Module):
+    """A small CNN encoder for MNIST."""
+    def __init__(self, rep_dim=128):
+        super().__init__()
+        self.convnet = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(32), nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(64), nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(64, 64, kernel_size=3, stride=1),
+            nn.BatchNorm2d(64), nn.ReLU(),
+            nn.Flatten()
+        )
+        self.fc = nn.Linear(64 * 5 * 5, rep_dim)
+
+    def forward(self, x):
+        return self.fc(self.convnet(x))
+
+# NOTE: The Expander class has been removed for this experiment.
+
+# --------------------------------------------------------------------------
+# 4. Lightning Module (Without Expander)
+# --------------------------------------------------------------------------
+
+class VICRegNoExpander(pl.LightningModule):
+    def __init__(self, rep_dim=128, lr=1e-3, batch_size=256, num_classes=10):
+        super().__init__()
+        self.save_hyperparameters()
+
+        self.encoder = SmallCNNEncoder(rep_dim=rep_dim)
+        # self.expander is intentionally removed.
+        self.criterion = VICRegLoss()
+        
+        self.linear_evaluator = nn.Linear(rep_dim, num_classes)
+        self.classification_loss = nn.CrossEntropyLoss()
+
+    def forward(self, x):
+        """Returns the representation for downstream tasks."""
+        return self.encoder(x)
+
+    def training_step(self, batch, batch_idx):
+        (x1, x2), y = batch
+
+        # --- VICReg Loss Calculation (updates encoder directly) ---
+        # NOTE: Loss is now calculated on the encoder's representations y1, y2
+        y1 = self.encoder(x1)
+        y2 = self.encoder(x2)
+        vicreg_loss, sim, std, cov = self.criterion(y1, y2)
+
+        # --- Online Linear Evaluation (updates linear_evaluator only) ---
+        with torch.no_grad():
+            y1_frozen = self.encoder(x1) # Use the same representation
+        
+        logits = self.linear_evaluator(y1_frozen)
+        ce_loss = self.classification_loss(logits, y)
+
+        # --- Combine Losses ---
+        total_loss = vicreg_loss + ce_loss
+        
+        # --- Logging ---
+        self.log('vicreg_loss', vicreg_loss, prog_bar=True, on_step=True, on_epoch=False)
+        self.log('classification_loss', ce_loss, on_step=True, on_epoch=False)
+        
+        preds = torch.argmax(logits, dim=1)
+        train_acc = (preds == y).float().mean()
+        self.log('train_acc', train_acc, prog_bar=True, on_step=True, on_epoch=False)
+        
+        return total_loss
+
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+        y_rep = self.encoder(x)
+        logits = self.linear_evaluator(y_rep)
+        
+        preds = torch.argmax(logits, dim=1)
+        val_acc = (preds == y).float().mean()
+        self.log('val_acc', val_acc, on_epoch=True, prog_bar=True)
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.lr, weight_decay=1e-6)
+        return optimizer
+
+# --------------------------------------------------------------------------
+# 5. Execution
+# --------------------------------------------------------------------------
+
+if __name__ == '__main__':
+    pl.seed_everything(42)
+    BATCH_SIZE = 256
+    MAX_EPOCHS = 40
+    DATA_PATH = './data'
+    os.makedirs(DATA_PATH, exist_ok=True)
+
+    # --- Prepare Data ---
+    train_transform = get_mnist_transforms()
+    train_dataset = torchvision.datasets.MNIST(
+        DATA_PATH, train=True, download=True, transform=TwoCropsTransform(train_transform)
+    )
+    val_transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.1307,), (0.3081,))
+    ])
+    val_dataset = torchvision.datasets.MNIST(
+        DATA_PATH, train=False, download=True, transform=val_transform
+    )
+    
+    train_loader = DataLoader(
+        train_dataset, batch_size=BATCH_SIZE, shuffle=True,
+        num_workers=4, pin_memory=True, drop_last=True
+    )
+    val_loader = DataLoader(
+        val_dataset, batch_size=BATCH_SIZE, shuffle=False,
+        num_workers=4, pin_memory=True
+    )
+
+    # --- Initialize Model & Trainer ---
+    model = VICRegNoExpander(rep_dim=256, batch_size=BATCH_SIZE)
+    wandb_logger = WandbLogger(project="experiments_mnist")
+    trainer = pl.Trainer(
+        max_epochs=MAX_EPOCHS,
+        accelerator="auto",
+        devices=1,
+        enable_checkpointing=False,
+        logger=wandb_logger
+    )
+
+    print("Starting VICReg pre-training on MNIST WITHOUT the expander...")
+    trainer.fit(model, train_loader, val_loader)
+    print("Pre-training finished.")
+    
+    final_val_acc = trainer.callback_metrics.get('val_acc')
+    if final_val_acc:
+        print(f"\nFinal validation accuracy WITHOUT expander: {final_val_acc.item():.4f}")
