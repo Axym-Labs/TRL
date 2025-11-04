@@ -14,8 +14,8 @@ from pytorch_lightning.loggers import WandbLogger
 
 from trl.config.config import Config
 from trl.datasets.mnist import build_dataloaders
-from trl.trainer.linear_classifier import LinearClassifier
-from trl.trainer.encoder import EncoderTrainer
+from trl.trainer.head import ClassifierHead, RegressorHead
+from trl.trainer.encoder import EncoderTrainer, SeqEncoderTrainer
 
 
 def run(cfg: Config):
@@ -24,6 +24,7 @@ def run(cfg: Config):
     torch.manual_seed(cfg.seed)
     pl.seed_everything(cfg.seed)
 
+    # for MNIST, the sequence task would be to predict the next rows from the previous
     train_loader, head_train_loader, val_loader = build_dataloaders(cfg.data_config)
 
     wandb_logger = WandbLogger(project=cfg.project_name, name=cfg.run_name)
@@ -38,13 +39,15 @@ def run(cfg: Config):
         pre_trainer = pl.Trainer(max_epochs=pretrain_epochs, accelerator="auto", devices=1,
                                 logger=wandb_logger, enable_checkpointing=False)
 
-        greedy_model = EncoderTrainer(f"e{i}", cfg, encoder_cfg, pre_model=pre_model)
-        pre_trainer.fit(greedy_model, train_loader)
-        pre_model = greedy_model
+        encoder_cls = EncoderTrainer if cfg.problem_type == "pass" else SeqEncoderTrainer
+        encoder = encoder_cls(f"e{i}", cfg, encoder_cfg, pre_model=pre_model)
+        pre_trainer.fit(encoder, train_loader)
+        pre_model = encoder
 
     frozen_encoder = pre_model
-    classifier = LinearClassifier(frozen_encoder, cfg)
-    classifier_trainer = pl.Trainer(max_epochs=cfg.classifier_epochs, accelerator="auto", devices=1,
+    head_cls = ClassifierHead if cfg.head_task == "classification" else RegressorHead
+    classifier = head_cls(frozen_encoder, cfg, cfg.head_out_dim)
+    classifier_trainer = pl.Trainer(max_epochs=cfg.head_epochs, accelerator="auto", devices=1,
                                     logger=wandb_logger, enable_checkpointing=False, num_sanity_val_steps=0)
     classifier_trainer.fit(classifier, head_train_loader)
     classifier_trainer.validate(classifier, dataloaders=val_loader)
@@ -69,8 +72,3 @@ def run(cfg: Config):
     print(f"Saved hparams -> {hparams_path}")
     print(f"Saved classifier -> {classifier_path}")
 
-
-cfg = Config()
-
-if __name__ == "__main__":
-    run(cfg)

@@ -3,9 +3,9 @@ import torch
 import torch.nn as nn
 
 from trl.config.config import Config
-from trl.loss import TCLoss
+from trl.loss import TRLoss
 from trl.store import MappingStore
-
+from trl.representation_metrics import RepresentationMetricsTracker
 
 class NormalizedMapping(nn.Module):
     """
@@ -17,7 +17,9 @@ class NormalizedMapping(nn.Module):
         self.norm = norm 
         self.act_fn = act_fn
         self.lat = nn.Linear(out_dim, out_dim, bias=False)
-        self.criterion = TCLoss(out_dim, cfg.tcloss_config)
+        
+        rep_tracker = RepresentationMetricsTracker(out_dim, cfg.head_out_dim) if cfg.head_task == "classification" else None
+        self.criterion = TRLoss(out_dim, cfg.tcloss_config, rep_tracker)
         self.store = MappingStore(cfg.store_config, out_dim)
 
     def forward(self, x: torch.Tensor):

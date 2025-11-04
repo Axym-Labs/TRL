@@ -1,10 +1,9 @@
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
-import contextlib
 
 from trl.config.config import Config, EncoderConfig
-from trl.modules.encoder import TCEncoder
+from trl.modules.encoder import TREncoder
 
 
 class EncoderTrainer(pl.LightningModule):
@@ -14,7 +13,7 @@ class EncoderTrainer(pl.LightningModule):
         self.encoder_cfg = encoder_cfg
         self.train_concurrently = cfg.train_encoder_concurrently
         self.pre_model = pre_model
-        self.encoder = TCEncoder(cfg, encoder_cfg, layer_dims=encoder_cfg.layer_dims)
+        self.encoder = TREncoder(cfg, encoder_cfg, layer_dims=encoder_cfg.layer_dims)
         self.current_layer_idx = 0
         self.epochs_per_layer = cfg.epochs
         self.automatic_optimization = False
@@ -29,7 +28,8 @@ class EncoderTrainer(pl.LightningModule):
         inp, _labels = batch
         if self.pre_model is not None:
             inp = self.pre_model(inp)
-        inp = inp.contiguous().view(inp.size(0), -1)
+        inp =  self.encoder.prepare_input(inp)
+
         optimizers = self.optimizers()
 
         if self.train_concurrently:
@@ -71,6 +71,9 @@ class EncoderTrainer(pl.LightningModule):
         return optimizers
 
     def on_train_epoch_end(self):
+        for i, layer in  self.encoder.enumerate_unique_layers():
+            self.log_dict({f"{self.ident}_layer_{i}/{k}": v for k, v in layer.criterion.epoch_metrics().items()})
+
         if not self.train_concurrently:
             if (self.current_epoch + 1) % self.epochs_per_layer == 0 and \
             self.current_layer_idx < len(self.encoder.layers) - 1:
@@ -81,3 +84,7 @@ class EncoderTrainer(pl.LightningModule):
         self.log(f'{self.ident}_layer_{layer_idx}/vicreg_loss', total_loss, prog_bar=prog_bar)
         self.log_dict({f'{self.ident}_layer_{layer_idx}/{k}': v for k, v in metrics.items()})
         self.log(f'{self.ident}_layer_{layer_idx}/lateral_loss', lateral_loss.detach(), prog_bar=False)
+
+
+class SeqEncoderTrainer(EncoderTrainer): ...
+

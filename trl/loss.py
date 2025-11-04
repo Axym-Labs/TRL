@@ -2,18 +2,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from trl.config.config import TCLossConfig
+from trl.config.config import TRLossConfig
 from trl.store import MappingStore
+from trl.representation_metrics import RepresentationMetricsTracker
 
 
-class TCLoss(nn.Module):
-    """Loss that expects a single tensor `z` of shape (N, D).
-    The forward() accepts an optional lateral head (nn.Module) that will be called
-    with detached uncentered activations: predicted = lateral(z.detach()).
-    The encoder receives -MSE(actual_centered, predicted_centered_detached).
-    The lateral receives +MSE(predicted_unc, z.detach()).
-    """
-    def __init__(self, num_features: int, cfg: TCLossConfig):
+class TRLoss(nn.Module):
+    def __init__(self, num_features: int, cfg: TRLossConfig, rep_tracker):
         super().__init__()
         self.cfg = cfg
 
@@ -24,6 +19,7 @@ class TCLoss(nn.Module):
         self.register_buffer("variance_targets", t)
 
         self.cov_matrix_mask = torch.rand((num_features, num_features)) <= self.cfg.cov_matrix_sparsity
+        self.rep_tracker = rep_tracker
 
     def forward(self, z: torch.Tensor, lateral: nn.Module, store: MappingStore):
         z_centered = z - store.mu.value
@@ -40,6 +36,9 @@ class TCLoss(nn.Module):
 
         vicreg_loss = self.cfg.sim_coeff * sim_loss + self.cfg.std_coeff * std_loss + self.cfg.cov_coeff * cov_loss
         lateral_loss = self.cfg.lat_coeff * lat_loss
+
+        if self.rep_tracker is not None:
+            self.rep_tracker.update(z)
 
         metrics = {
             'sim_loss': sim_loss.detach(),
@@ -76,3 +75,29 @@ class TCLoss(nn.Module):
 
         lateral_loss_pn = F.mse_loss(lateral.weight, cov_stat, reduction="none")
         return lateral_loss_pn
+
+    def epoch_metrics(self):
+        if self.rep_tracker is not None:
+            return self.rep_tracker.scalar_metrics()
+    
+
+class TRSeqLoss(TRLoss):
+    "TCLoss for training on sequence tasks, ie where inputs are of shape (batch_size, sequence_length, latent_dimension)"
+    def sim_loss(self, last_z, z_centered):
+        B, S, D = z_centered.shape
+
+        if self.cfg.consider_last_batch_z:
+            last = last_z.view(1, D).unsqueeze(1).expand(B, 1, D)
+            zc = torch.cat([last, z_centered], dim=1)
+        else:
+            zc = z_centered
+        diff = zc[:, 1:, :] - zc[:, :-1, :]
+        # average over sequence for compatibility with TCLoss
+        return (diff ** 2).mean(dim=1)  
+
+    def cov_loss(self, z_centered, lateral):
+        B, S, D = z_centered.shape
+        z_flat = z_centered.contiguous().view(-1, D)
+        lat_flat = lateral(z_flat.detach()).detach()
+        lat = lat_flat.view(B, S, D)
+        return z_centered * lat

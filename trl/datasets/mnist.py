@@ -19,9 +19,8 @@ def get_mnist_val_transform():
         transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))
     ])
 
-def build_dataloaders(cfg: DataConfig):
-    assert cfg.batch_size % cfg.chunk_size == 0, "batch_size must be a multiple of chunk_size"
 
+def build_dataloaders(cfg: DataConfig):
     # For pretraining we need a base dataset without transforms so the wrapper can sample two imgs
     mnist_dataset_transform_specific = lambda t: torchvision.datasets.MNIST(cfg.data_path, train=True, download=True, transform=t)
     base_train = mnist_dataset_transform_specific(get_mnist_augment())
@@ -41,6 +40,7 @@ def build_dataloaders(cfg: DataConfig):
         num_workers=cfg.num_workers, 
         pin_memory=cfg.pin_memory, 
         drop_last=True,
+        persistent_workers=True
     )
     train_loader = DataLoader(base_train, **train_loader_kwargs)
     head_train_loader = DataLoader(head_base_train, **train_loader_kwargs)

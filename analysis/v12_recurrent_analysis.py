@@ -11,7 +11,7 @@ import torch
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
-from trl.run_training import Config, EncoderConfig, EncoderTrainer, LinearClassifier, build_dataloaders
+from trl.run_training import Config, EncoderConfig, EncoderTrainer, ClassifierHead, build_dataloaders
 
 
 # paths
@@ -43,7 +43,7 @@ def analyze(encoder_path=ENCODER_PATH, classifier_path=CLASSIFIER_PATH):
 
     encoder_trainer.eval()
 
-    classifier_model = LinearClassifier(encoder_trainer, cfg, num_classes=10)
+    classifier_model = ClassifierHead(encoder_trainer, cfg, num_classes=10)
     if os.path.exists(classifier_path):
         cls_state = torch.load(classifier_path, map_location=DEVICE)
         classifier_model.load_state_dict(cls_state, strict=False)
@@ -121,7 +121,7 @@ def analyze(encoder_path=ENCODER_PATH, classifier_path=CLASSIFIER_PATH):
         plt.savefig(OUT_DIR / "second_layer_dists" / f"neuron_{neuron_idx:03d}_per_class_box.png", dpi=150)
         plt.close()
 
-    Wc = classifier_model.classifier.weight.detach().cpu().numpy()
+    Wc = classifier_model.mapping.weight.detach().cpu().numpy()
     num_classes, rep_dim = Wc.shape
     plt.figure(figsize=(12,6))
     plt.imshow(Wc, aspect='auto', cmap='bwr')
