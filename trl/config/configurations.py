@@ -61,10 +61,11 @@ def mnist_deep_net(conf: Config):
 @change_configuration
 def mnist_rnn_setup(conf: Config):
     conf.encoders = [
-        EncoderConfig(((28, 128),(128,64)))
+        EncoderConfig(((28+64, 128),(128,64)))
     ]
     conf.head_out_dim = 28
     conf.head_task = "regression"
     conf.problem_type = "sequence"
-    print("bla")
+    conf.epochs = 1
+    conf.head_epochs = 1
 

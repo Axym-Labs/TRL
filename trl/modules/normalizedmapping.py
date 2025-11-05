@@ -20,7 +20,7 @@ class NormalizedMapping(nn.Module):
         
         rep_tracker = RepresentationMetricsTracker(out_dim, cfg.head_out_dim) if cfg.head_task == "classification" else None
         self.criterion = TRLoss(out_dim, cfg.tcloss_config, rep_tracker)
-        self.store = MappingStore(cfg.store_config, out_dim)
+        self.store = MappingStore(cfg.store_config, out_dim, cfg.problem_type)
 
     def forward(self, x: torch.Tensor):
         out = self.lin(x)
@@ -30,7 +30,7 @@ class NormalizedMapping(nn.Module):
 
         return self.act_fn(out)
     
-    def compute_loss(self, x: torch.Tensor):
+    def training_pass(self, x: torch.Tensor):
         z_pre = self.forward(x)
         z = self.act_fn(z_pre)
         self.store.update_post(z)

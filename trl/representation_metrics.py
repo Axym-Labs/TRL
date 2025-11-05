@@ -1,6 +1,17 @@
 import numpy as np
 from typing import Optional, Dict, Any
 
+class EmtpyRepresentationMetricsTracker:
+    def compute_metrics(self):
+        pass
+
+    def update(self, x):
+        pass
+
+    def scalar_metrics(self):
+        return {}
+
+
 class RepresentationMetricsTracker:
     """
     Incremental tracker for per-neuron failure modes.

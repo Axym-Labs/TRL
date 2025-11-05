@@ -20,11 +20,19 @@ def get_mnist_val_transform():
     ])
 
 
-def build_dataloaders(cfg: DataConfig):
+def seq_transform(x):
+    # first dimension because this operates at the dataset level
+    # no batch dimension yet
+    return x.squeeze(0)
+
+
+def build_dataloaders(cfg: DataConfig, problem_type: str):
     # For pretraining we need a base dataset without transforms so the wrapper can sample two imgs
     mnist_dataset_transform_specific = lambda t: torchvision.datasets.MNIST(cfg.data_path, train=True, download=True, transform=t)
-    base_train = mnist_dataset_transform_specific(get_mnist_augment())
-    head_base_train = mnist_dataset_transform_specific(get_mnist_val_transform())
+    # remove the channel dimension if the problem is sequential such that the shape is (B, S=28, D=28)
+    if_seq_squeeze = lambda x: transforms.Compose([x, seq_transform]) if problem_type == "sequence" else x
+    base_train = mnist_dataset_transform_specific(if_seq_squeeze(get_mnist_augment()))
+    head_base_train = mnist_dataset_transform_specific(if_seq_squeeze(get_mnist_val_transform()))
 
     # extract labels for sampler
     label_list = [base_train[i][1] for i in range(len(base_train))]
@@ -32,7 +40,7 @@ def build_dataloaders(cfg: DataConfig):
     # sampler that enforces chunk coherence
     sampler = CoherentSampler(label_list=label_list, coherence=cfg.coherence, chunk_size=cfg.chunk_size, shuffle=True)
 
-    val_ds = torchvision.datasets.MNIST(cfg.data_path, train=False, download=True, transform=get_mnist_val_transform())
+    val_ds = torchvision.datasets.MNIST(cfg.data_path, train=False, download=True, transform=if_seq_squeeze(get_mnist_val_transform()))
 
     train_loader_kwargs = dict(
         batch_size=cfg.batch_size, 

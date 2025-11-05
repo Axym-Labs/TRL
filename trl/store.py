@@ -28,7 +28,9 @@ class MappingStore:
     pre_nonlin_mu: LeakyIntegrator
     pre_nonlin_var: LeakyIntegrator
 
-    def __init__(self, cfg: StoreConfig, out_dim: int):
+    problem_type: str
+
+    def __init__(self, cfg: StoreConfig, out_dim: int, problem_type: str):
         self.batchless_updates = cfg.batchless_updates
         pre_m, post_m = cfg.pre_stats_momentum, cfg.post_stats_momentum
         self.mu=LeakyIntegrator(torch.zeros(out_dim), post_m, overwrite_at_start=cfg.overwrite_at_start)
@@ -37,6 +39,7 @@ class MappingStore:
         self.last_z=LeakyIntegrator(torch.zeros(out_dim), cfg.last_z_momentum, overwrite_at_start=cfg.overwrite_at_start)
         self.pre_nonlin_mu=LeakyIntegrator(torch.zeros(out_dim), pre_m, overwrite_at_start=cfg.overwrite_at_start)
         self.pre_nonlin_var=LeakyIntegrator(torch.ones(out_dim), pre_m, overwrite_at_start=cfg.overwrite_at_start)
+        self.problem_type = problem_type
 
     def update_pre(self, z_pre: torch.Tensor):
         self.pre_nonlin_mu.update(z_pre.mean(dim=0))
@@ -48,15 +51,23 @@ class MappingStore:
 
     def update_post(self, z: torch.Tensor):
         z = z.detach()
+        # here, we flatten instead of specifying the dimension
+        # because we have to calculate the covariance matrix
+        if self.problem_type == "sequence" and z.ndim >= 3:
+            z = z.contiguous().view(-1, z.shape[2])
 
         batch_mean = z.mean(dim=0)
         self.mu.update(batch_mean)
         mu = self.mu.value if self.batchless_updates else batch_mean
         z_centered = z - mu
+        
         var = (z_centered**2).mean(dim=0) if self.batchless_updates else torch.var(z, dim=0, unbiased=False)
         self.var.update(var)
         cov = (z_centered.T @ z_centered) / z_centered.shape[0]
         self.cov.update(cov)
 
     def update_last_z(self, z: torch.Tensor):
-        self.last_z.update(z[-1])
+        if self.problem_type == "sequence" and z.ndim >= 3:
+            self.last_z.update(z[:, -1, :])
+        else:
+            self.last_z.update(z[-1])

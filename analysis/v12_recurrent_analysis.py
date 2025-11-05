@@ -43,7 +43,7 @@ def analyze(encoder_path=ENCODER_PATH, classifier_path=CLASSIFIER_PATH):
 
     encoder_trainer.eval()
 
-    classifier_model = ClassifierHead(encoder_trainer, cfg, num_classes=10)
+    classifier_model = ClassifierHead(encoder_trainer, cfg, out_dim=10)
     if os.path.exists(classifier_path):
         cls_state = torch.load(classifier_path, map_location=DEVICE)
         classifier_model.load_state_dict(cls_state, strict=False)

@@ -14,9 +14,9 @@ from pytorch_lightning.loggers import WandbLogger
 
 from trl.config.config import Config
 from trl.datasets.mnist import build_dataloaders
-from trl.trainer.head import ClassifierHead, RegressorHead
+from trl.trainer.head import ClassifierHead, RegressorHead, PredictorHead
+from trl.modules.encoder import TREncoder, TRSeqEncoder
 from trl.trainer.encoder import EncoderTrainer, SeqEncoderTrainer
-
 
 def run(cfg: Config):
     random.seed(cfg.seed)
@@ -25,7 +25,7 @@ def run(cfg: Config):
     pl.seed_everything(cfg.seed)
 
     # for MNIST, the sequence task would be to predict the next rows from the previous
-    train_loader, head_train_loader, val_loader = build_dataloaders(cfg.data_config)
+    train_loader, head_train_loader, val_loader = build_dataloaders(cfg.data_config, cfg.problem_type)
 
     wandb_logger = WandbLogger(project=cfg.project_name, name=cfg.run_name)
     # log all hyperparameters centrally from Config
@@ -39,13 +39,23 @@ def run(cfg: Config):
         pre_trainer = pl.Trainer(max_epochs=pretrain_epochs, accelerator="auto", devices=1,
                                 logger=wandb_logger, enable_checkpointing=False)
 
-        encoder_cls = EncoderTrainer if cfg.problem_type == "pass" else SeqEncoderTrainer
-        encoder = encoder_cls(f"e{i}", cfg, encoder_cfg, pre_model=pre_model)
-        pre_trainer.fit(encoder, train_loader)
-        pre_model = encoder
+        encoder_cls = TRSeqEncoder if cfg.problem_type == "sequence" else TREncoder
+        encoder = encoder_cls(cfg, encoder_cfg)
+        encoder_trainer_cls = SeqEncoderTrainer if cfg.problem_type == "sequence" else EncoderTrainer
+        encoder_trainer = encoder_trainer_cls(f"e{i}", cfg, encoder, pre_model=pre_model)
+        pre_trainer.fit(encoder_trainer, train_loader)
+        pre_model = encoder_trainer
 
     frozen_encoder = pre_model
-    head_cls = ClassifierHead if cfg.head_task == "classification" else RegressorHead
+
+    # if sequence problem: predict next item in sequence
+    if cfg.head_task == "classification":
+        assert cfg.problem_type != "sequence", "not implemented yet"
+        head_cls = ClassifierHead
+    elif cfg.head_task == "regression":
+        head_cls = RegressorHead if cfg.problem_type != "sequence" else PredictorHead
+    else:
+        raise ValueError("Unsupported head_task")
     classifier = head_cls(frozen_encoder, cfg, cfg.head_out_dim)
     classifier_trainer = pl.Trainer(max_epochs=cfg.head_epochs, accelerator="auto", devices=1,
                                     logger=wandb_logger, enable_checkpointing=False, num_sanity_val_steps=0)

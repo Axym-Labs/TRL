@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 from trl.config.config import TRLossConfig
 from trl.store import MappingStore
-from trl.representation_metrics import RepresentationMetricsTracker
+from trl.representation_metrics import EmtpyRepresentationMetricsTracker, RepresentationMetricsTracker
 
 
 class TRLoss(nn.Module):
@@ -19,7 +19,7 @@ class TRLoss(nn.Module):
         self.register_buffer("variance_targets", t)
 
         self.cov_matrix_mask = torch.rand((num_features, num_features)) <= self.cfg.cov_matrix_sparsity
-        self.rep_tracker = rep_tracker
+        self.rep_tracker = rep_tracker or EmtpyRepresentationMetricsTracker()
 
     def forward(self, z: torch.Tensor, lateral: nn.Module, store: MappingStore):
         z_centered = z - store.mu.value
@@ -37,8 +37,7 @@ class TRLoss(nn.Module):
         vicreg_loss = self.cfg.sim_coeff * sim_loss + self.cfg.std_coeff * std_loss + self.cfg.cov_coeff * cov_loss
         lateral_loss = self.cfg.lat_coeff * lat_loss
 
-        if self.rep_tracker is not None:
-            self.rep_tracker.update(z)
+        self.rep_tracker.update(z)
 
         metrics = {
             'sim_loss': sim_loss.detach(),
@@ -77,8 +76,7 @@ class TRLoss(nn.Module):
         return lateral_loss_pn
 
     def epoch_metrics(self):
-        if self.rep_tracker is not None:
-            return self.rep_tracker.scalar_metrics()
+        return self.rep_tracker.scalar_metrics()
     
 
 class TRSeqLoss(TRLoss):
