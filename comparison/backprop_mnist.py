@@ -100,7 +100,10 @@ def get_mnist_val_transform():
         transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))
     ])
 
-def run(epochs=60, batch_size=64, batchnorm=True, lr=15e-4, v3=True):
+def run(epochs=60, batch_size=64, batchnorm=True, lr=15e-4, v3=True, seed=43):
+    torch.manual_seed(seed)
+    pl.seed_everything(seed)
+
     # Load MNIST dataset
     # no augmentation: it decreases validation performance
     train_dataset = datasets.MNIST('data', train=True, download=True, transform=get_mnist_val_transform())
