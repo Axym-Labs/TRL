@@ -20,12 +20,8 @@ def intermediate_length_run(conf: Config):
 
 @change_configuration
 def long_training(conf: Config):
-    conf.data_config.batch_size = 30
-    conf.data_config.chunk_size = 6
-    # OTHER PARAMS
     conf.epochs = 60
     conf.head_epochs = 60
-    conf.lr = 5e-4
 
 @change_configuration
 def batchless(conf: Config):
@@ -35,7 +31,7 @@ def batchless(conf: Config):
     conf.store_config.post_stats_momentum = 0.9994
     conf.store_config.cov_momentum = 0.9994
     conf.store_config.batchless_updates = True
-    conf.tcloss_config.consider_last_batch_z = True
+    conf.trloss_config.consider_last_batch_z = True
     if conf.batchnorm_config is not None:
         conf.batchnorm_config.use_batch_statistics_training = False
 
@@ -79,4 +75,21 @@ def mnist_backprop_comparison(conf: Config):
     conf = long_training(conf)
     conf.data_config.encoder_augment = False
 
+@change_configuration
+def mnist_backprop_comparison_no_bn(conf: Config):
+    conf = mnist_backprop_comparison(conf)
+    conf.batchnorm_config = None
+    conf.trloss_config.std_coeff = 50.0
+    conf.lr = 3e-4
+
+@change_configuration
+def ff_scale_network(conf: Config):
+    conf.encoders = [
+        EncoderConfig(((28*28, 2000), *[(2000, 2000) for _ in range(3)])),
+    ]
+
+@change_configuration
+def beneficial_setup(conf: Config):
+    conf.data_config.encoder_augment = True
+    conf.train_encoder_concurrently = False
 

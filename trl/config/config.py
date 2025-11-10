@@ -74,14 +74,14 @@ class Config:
     head_out_dim: int = 10
 
     # different encoders are trained in sequence
-    # within encoders, layer can be trained concurrently
+    # within encoders, layers can be trained concurrently
     train_encoder_concurrently: bool = True
     epochs: int = 5
     head_epochs: int = 10
     lr: float = 1e-3
 
     data_config: DataConfig = DataConfig()
-    tcloss_config: TRLossConfig = TRLossConfig()
+    trloss_config: TRLossConfig = TRLossConfig()
     batchnorm_config: BatchNormConfig|None = BatchNormConfig()
     store_config: StoreConfig = StoreConfig()
 

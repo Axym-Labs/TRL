@@ -8,10 +8,16 @@ import wandb
 from pytorch_lightning.loggers import WandbLogger
 
 class MNISTModelReLU(pl.LightningModule):
-    def __init__(self, batchnorm, lr):
+    def __init__(self, batchnorm, lr, v3=False):
         super().__init__()
         self.lr = lr
+        self.v3 = v3
+        if not v3:
+            self.init_v1(batchnorm)
+        else:
+            self.init_v3(batchnorm)
 
+    def init_v1(self, batchnorm):
         self.flatten = nn.Flatten()
         h1 = 512
         self.fc1 = nn.Linear(28 * 28, h1)
@@ -19,12 +25,47 @@ class MNISTModelReLU(pl.LightningModule):
         self.fc2 = nn.Linear(h1, 256)
         self.bn2 = nn.BatchNorm1d(256) if batchnorm else nn.Identity()
         self.fc3 = nn.Linear(256, 10)
+    
+    def init_v3(self, batchnorm):
+        self.flatten = nn.Flatten()
+        h1 = 2000
+        h2 = 2000
+        h3 = 2000
+        h4 = 2000
+        self.fc1 = nn.Linear(28 * 28, h1)
+        self.bn1 = nn.BatchNorm1d(h1) if batchnorm else nn.Identity()
+        self.fc2 = nn.Linear(h1, h2)
+        self.bn2 = nn.BatchNorm1d(h2) if batchnorm else nn.Identity()
+        self.fc3 = nn.Linear(h2, h3)
+        self.bn3 = nn.BatchNorm1d(h3) if batchnorm else nn.Identity()
+        self.fc4 = nn.Linear(h3, h4)
+        self.bn4 = nn.BatchNorm1d(h4) if batchnorm else nn.Identity()
+        self.fc5 = nn.Linear(h4, 10)
 
     def forward(self, x):
+        if self.v3:
+            return self.forward_v3(x)
+        else: 
+            return self.forward_v1(x)
+
+    def forward_v1(self, x):
         x = self.flatten(x)
         x = F.relu(self.bn1(self.fc1(x)))
         x = F.relu(self.bn2(self.fc2(x)))
         x = self.fc3(x)
+        return x
+    
+    def forward_v3(self, x):
+        x = self.flatten(x)
+        x = self.fc1(x)
+        x = F.relu(self.bn1(x))
+        x = self.fc2(x)
+        x = F.relu(self.bn2(x))
+        x = self.fc3(x)
+        x = F.relu(self.bn3(x))
+        x = self.fc4(x)
+        x = F.relu(self.bn4(x))
+        x = self.fc5(x)
         return x
 
     def training_step(self, batch, batch_idx):
@@ -45,7 +86,7 @@ class MNISTModelReLU(pl.LightningModule):
         self.log('val_acc', acc)
 
     def configure_optimizers(self):
-        return torch.optim.SGD(self.parameters(), lr=1e-3)
+        return torch.optim.Adam(self.parameters(), lr=self.lr)
 
 def get_mnist_augment():
     return transforms.Compose([
@@ -59,7 +100,7 @@ def get_mnist_val_transform():
         transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))
     ])
 
-def run(epochs=20, batch_size=64, batchnorm=True, lr=1e-3):
+def run(epochs=60, batch_size=64, batchnorm=True, lr=15e-4, v3=True):
     # Load MNIST dataset
     # no augmentation: it decreases validation performance
     train_dataset = datasets.MNIST('data', train=True, download=True, transform=get_mnist_val_transform())
@@ -73,7 +114,7 @@ def run(epochs=20, batch_size=64, batchnorm=True, lr=1e-3):
 
     # Train ReLU model
     print("Training ReLU Model...")
-    model_relu = MNISTModelReLU(batchnorm=batchnorm, lr=lr)
+    model_relu = MNISTModelReLU(batchnorm=batchnorm, lr=lr, v3=v3)
     trainer_relu = pl.Trainer(
         max_epochs=epochs,
         logger=wandb_logger,

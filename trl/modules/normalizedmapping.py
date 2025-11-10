@@ -19,7 +19,7 @@ class NormalizedMapping(nn.Module):
         self.lat = nn.Linear(out_dim, out_dim, bias=False)
         
         rep_tracker = RepresentationMetricsTracker(out_dim, cfg.head_out_dim) if cfg.head_task == "classification" and cfg.track_representations else None
-        self.criterion = TRLoss(out_dim, cfg.tcloss_config, rep_tracker)
+        self.criterion = TRLoss(out_dim, cfg.trloss_config, rep_tracker)
         self.store = MappingStore(cfg.store_config, out_dim, cfg.problem_type)
 
     def forward(self, x: torch.Tensor):

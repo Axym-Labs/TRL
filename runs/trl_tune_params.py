@@ -37,10 +37,10 @@ def sample_trial():
 def apply_to_cfg(cfg, s):
     cfg = deepcopy(cfg)
     cfg.lr = s["lr"]
-    cfg.tcloss_config.sim_coeff = s["sim_coeff"]
-    cfg.tcloss_config.std_coeff = s["std_coeff"]
-    cfg.tcloss_config.lat_coeff = s["lat_coeff"]
-    cfg.tcloss_config.cov_coeff = s["cov_coeff"]
+    cfg.trloss_config.sim_coeff = s["sim_coeff"]
+    cfg.trloss_config.std_coeff = s["std_coeff"]
+    cfg.trloss_config.lat_coeff = s["lat_coeff"]
+    cfg.trloss_config.cov_coeff = s["cov_coeff"]
     return cfg
 
 def main():

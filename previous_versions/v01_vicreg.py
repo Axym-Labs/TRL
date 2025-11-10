@@ -29,7 +29,7 @@ def get_mnist_transforms():
     # We avoid horizontal flips which can change the digit's meaning (e.g., 6 vs. 9).
     return transforms.Compose([
         transforms.RandomResizedCrop(28, scale=(0.5, 1.0)),
-        transforms.RandomApply([transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0))], p=0.5),
+        # transforms.RandomApply([transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0))], p=0.5),
         transforms.ToTensor(),
         transforms.Normalize((0.1307,), (0.3081,)) # Standard MNIST normalization
     ])
@@ -87,20 +87,23 @@ class SmallCNNEncoder(nn.Module):
     def __init__(self, rep_dim=128):
         super().__init__()
         self.convnet = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(32), nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(64), nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(64, 64, kernel_size=3, stride=1),
-            nn.BatchNorm2d(64), nn.ReLU(),
-            nn.Flatten()
+            nn.Linear(28 * 28, 512),
+            nn.ReLU(),
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            # nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1),
+            # nn.BatchNorm2d(32), nn.ReLU(),
+            # nn.MaxPool2d(kernel_size=2, stride=2),
+            # nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
+            # nn.BatchNorm2d(64), nn.ReLU(),
+            # nn.MaxPool2d(kernel_size=2, stride=2),
+            # nn.Conv2d(64, 64, kernel_size=3, stride=1),
+            # nn.BatchNorm2d(64), nn.ReLU(),
+            # nn.Flatten()
         )
-        self.fc = nn.Linear(64 * 5 * 5, rep_dim)
 
     def forward(self, x):
-        return self.fc(self.convnet(x))
+        return self.convnet(x)
 
 class Expander(nn.Module):
     """The expander network projects representations to a higher-dimensional space."""
@@ -140,6 +143,8 @@ class VICRegMNIST(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         (x1, x2), y = batch
 
+        x1 = x1.view(x1.size(0), -1) # Flatten the images for the linear encoder
+        x2 = x2.view(x2.size(0), -1)
         # --- VICReg Loss Calculation (updates encoder + expander) ---
         y1 = self.encoder(x1)
         y2 = self.encoder(x2)
@@ -177,6 +182,7 @@ class VICRegMNIST(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         x, y = batch
+        x = x.view(x.size(0), -1)  # Flatten the images for the linear encoder
         y_rep = self.encoder(x) # Gradients are off by default in validation
         logits = self.linear_evaluator(y_rep)
         
@@ -187,7 +193,7 @@ class VICRegMNIST(pl.LightningModule):
     def configure_optimizers(self):
         # A single optimizer can train both parts of the network
         # because the gradient flow is controlled in the training_step.
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.lr, weight_decay=1e-6)
+        optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.lr)
         return optimizer
 
 # --------------------------------------------------------------------------
@@ -196,8 +202,9 @@ class VICRegMNIST(pl.LightningModule):
 
 if __name__ == '__main__':
     pl.seed_everything(42)
-    BATCH_SIZE = 256
-    MAX_EPOCHS = 40
+    BATCH_SIZE = 64
+    MAX_EPOCHS = 60
+    LR = 15e-4
     DATA_PATH = './data'
     os.makedirs(DATA_PATH, exist_ok=True)
 
@@ -227,14 +234,15 @@ if __name__ == '__main__':
     )
 
     # --- Initialize Model & Trainer ---
-    model = VICRegMNIST(batch_size=BATCH_SIZE)
+    model = VICRegMNIST(batch_size=BATCH_SIZE, lr=LR)
     wandb_logger = WandbLogger(project="experiments_mnist")
     trainer = pl.Trainer(
         max_epochs=MAX_EPOCHS,
         accelerator="auto",
         devices=1,
         enable_checkpointing=False,
-        logger=wandb_logger # Enable logger to see epoch-level metrics
+        logger=wandb_logger, # Enable logger to see epoch-level metrics
+        check_val_every_n_epoch=MAX_EPOCHS
     )
 
     print("Starting VICReg pre-training on MNIST with online linear evaluation...")
