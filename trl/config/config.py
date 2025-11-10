@@ -50,6 +50,8 @@ class DataConfig:
     data_path: str = "./data"
     num_workers: int = 8
     pin_memory: bool = False
+
+    encoder_augment: bool = True
     
     batch_size: int = 64
     chunk_size: int = 16 # size of coherent same-class chunks
@@ -59,6 +61,10 @@ class DataConfig:
 class Config:
     project_name: str = "experiments_mnist"
     run_name: str = "v12"
+    # wandb or csv
+    logger: str = "wandb"
+    track_representations: bool = False
+
     seed: int = 42
     # pass -> a simple forward pass
     # sequence -> sequential setup

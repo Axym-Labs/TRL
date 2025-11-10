@@ -95,8 +95,6 @@ class SeqEncoderTrainer(EncoderTrainer):
         device = x.device
 
         optimizer = self.optimizers()
-        if isinstance(optimizer, (list, tuple)):
-            optimizer = optimizer[0]
 
         for t in range(seq_len):
             cur_inp = torch.cat([x[:, t, :], hidden], dim=1)
@@ -107,9 +105,8 @@ class SeqEncoderTrainer(EncoderTrainer):
                 self._log_layer_metrics(pass_i, step_loss, lateral_loss, metrics, prog_bar=True)
 
             optimizer.zero_grad()
-            if total_loss_t is not None:
-                self.manual_backward(total_loss_t)
-                optimizer.step()
+            self.manual_backward(total_loss_t)
+            optimizer.step()
 
             hidden = cur_inp
 

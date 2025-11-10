@@ -31,7 +31,7 @@ def build_dataloaders(cfg: DataConfig, problem_type: str):
     mnist_dataset_transform_specific = lambda t: torchvision.datasets.MNIST(cfg.data_path, train=True, download=True, transform=t)
     # remove the channel dimension if the problem is sequential such that the shape is (B, S=28, D=28)
     if_seq_squeeze = lambda x: transforms.Compose([x, seq_transform]) if problem_type == "sequence" else x
-    base_train = mnist_dataset_transform_specific(if_seq_squeeze(get_mnist_augment()))
+    base_train = mnist_dataset_transform_specific(if_seq_squeeze(get_mnist_augment() if cfg.encoder_augment else get_mnist_val_transform()))
     head_base_train = mnist_dataset_transform_specific(if_seq_squeeze(get_mnist_val_transform()))
 
     # extract labels for sampler

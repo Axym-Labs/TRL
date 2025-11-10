@@ -1,10 +1,10 @@
 .env
 .venv
-lightining_logs
+lightning_logs
 wandb
 __pycache__/
 saved_models
 data
 data/*
 analysis_outputs
-
+experiments_mnist

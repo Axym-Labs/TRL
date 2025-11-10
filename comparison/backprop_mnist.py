@@ -8,65 +8,23 @@ import wandb
 from pytorch_lightning.loggers import WandbLogger
 
 class MNISTModelReLU(pl.LightningModule):
-    def __init__(self):
+    def __init__(self, batchnorm, lr):
         super().__init__()
-        self.init_deep()
+        self.lr = lr
 
-    def init_old(self):
         self.flatten = nn.Flatten()
-        # to match vicreg_10_nobn parameter count roughly
-        # or 512 to match its hidden dim
-        h1 = 824
+        h1 = 512
         self.fc1 = nn.Linear(28 * 28, h1)
-        self.bn1 = nn.BatchNorm1d(h1)
+        self.bn1 = nn.BatchNorm1d(h1) if batchnorm else nn.Identity()
         self.fc2 = nn.Linear(h1, 256)
-        self.bn2 = nn.BatchNorm1d(256)
+        self.bn2 = nn.BatchNorm1d(256) if batchnorm else nn.Identity()
         self.fc3 = nn.Linear(256, 10)
 
-    def init_deep(self):
-        self.flatten = nn.Flatten()
-        self.fc1 = nn.Linear(28 * 28, 128)
-        self.bn1 = nn.BatchNorm1d(128)
-        self.fc2 = nn.Linear(128, 128)
-        self.bn2 = nn.BatchNorm1d(128)
-        self.fc3 = nn.Linear(128, 128)
-        self.bn3 = nn.BatchNorm1d(128)
-        self.fc4 = nn.Linear(128, 128)
-        self.bn4 = nn.BatchNorm1d(128)
-        # self.fc5 = nn.Linear(128, 128)
-        # self.bn5 = nn.BatchNorm1d(128)
-        # self.fc6 = nn.Linear(128, 128)
-        # self.bn6 = nn.BatchNorm1d(128)
-        # self.fc7 = nn.Linear(128, 128)
-        # self.bn7 = nn.BatchNorm1d(128)
-        # self.fc8 = nn.Linear(128, 128)
-        # self.bn8 = nn.BatchNorm1d(128)
-        # self.fc9 = nn.Linear(128, 128)
-        # self.bn9 = nn.BatchNorm1d(128)
-        self.fc10 = nn.Linear(128, 10)
-
     def forward(self, x):
-        return self.forward_deep(x)
-
-    def forward_shallow(self, x):
         x = self.flatten(x)
         x = F.relu(self.bn1(self.fc1(x)))
         x = F.relu(self.bn2(self.fc2(x)))
         x = self.fc3(x)
-        return x
-
-    def forward_deep(self, x):
-        x = self.flatten(x)
-        x = F.relu(self.bn1(self.fc1(x)))
-        x = F.relu(self.bn2(self.fc2(x)))
-        x = F.relu(self.bn3(self.fc3(x)))
-        x = F.relu(self.bn4(self.fc4(x)))
-        # x = F.relu(self.bn5(self.fc5(x)))
-        # x = F.relu(self.bn6(self.fc6(x)))
-        # x = F.relu(self.bn7(self.fc7(x)))
-        # x = F.relu(self.bn8(self.fc8(x)))
-        # x = F.relu(self.bn9(self.fc9(x)))
-        x = self.fc10(x)
         return x
 
     def training_step(self, batch, batch_idx):
@@ -101,31 +59,34 @@ def get_mnist_val_transform():
         transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))
     ])
 
-def main():
+def run(epochs=20, batch_size=64, batchnorm=True, lr=1e-3):
     # Load MNIST dataset
     # no augmentation: it decreases validation performance
     train_dataset = datasets.MNIST('data', train=True, download=True, transform=get_mnist_val_transform())
     val_dataset = datasets.MNIST('data', train=False, transform=get_mnist_val_transform())
 
-    train_loader = DataLoader(train_dataset, batch_size=32)
-    val_loader = DataLoader(val_dataset, batch_size=32)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size)
 
     # Initialize wandb logger
     wandb_logger = WandbLogger(project="experiments_mnist")
 
     # Train ReLU model
     print("Training ReLU Model...")
-    model_relu = MNISTModelReLU()
+    model_relu = MNISTModelReLU(batchnorm=batchnorm, lr=lr)
     trainer_relu = pl.Trainer(
-        max_epochs=40,
+        max_epochs=epochs,
         logger=wandb_logger,
         accelerator='auto',
+        check_val_every_n_epoch=epochs
     )
     trainer_relu.fit(model_relu, train_loader, val_loader)
 
-    # Start a new wandb run for the Linear model
     wandb.finish()
-    wandb_logger = WandbLogger(project="experiments_mnist")
+
+    return trainer_relu.callback_metrics.get('val_acc').item()
+
+
 
 if __name__ == '__main__':
-    main()
+    run()

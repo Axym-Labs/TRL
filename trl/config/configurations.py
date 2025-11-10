@@ -5,9 +5,9 @@ from trl.config.config import Config, EncoderConfig
 
 def change_configuration(fn):
     @wraps(fn)
-    def wrapper(*args, **kwargs):
-        conf_new = Config()
-        fn(conf_new, *args, **kwargs)
+    def wrapper(conf=None, **kwargs):
+        conf_new = conf or Config()
+        fn(conf_new, **kwargs)
         conf_new.run_name = conf_new.run_name + " " + fn.__name__
         return conf_new
     
@@ -22,6 +22,7 @@ def intermediate_length_run(conf: Config):
 def long_training(conf: Config):
     conf.data_config.batch_size = 30
     conf.data_config.chunk_size = 6
+    # OTHER PARAMS
     conf.epochs = 60
     conf.head_epochs = 60
     conf.lr = 5e-4
@@ -66,6 +67,16 @@ def mnist_rnn_setup(conf: Config):
     conf.head_out_dim = 28
     conf.head_task = "regression"
     conf.problem_type = "sequence"
-    conf.epochs = 1
-    conf.head_epochs = 1
+
+@change_configuration
+def mnist_backprop_comparison_tuning(conf: Config):
+    conf = intermediate_length_run(conf)
+    conf.logger = "csv"
+    conf.data_config.encoder_augment = False
+
+@change_configuration
+def mnist_backprop_comparison(conf: Config):
+    conf = long_training(conf)
+    conf.data_config.encoder_augment = False
+
 

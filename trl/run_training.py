@@ -10,7 +10,7 @@ import random
 import numpy as np
 import torch
 import pytorch_lightning as pl
-from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.loggers import WandbLogger, CSVLogger
 
 from trl.config.config import Config
 from trl.datasets.mnist import build_dataloaders
@@ -27,17 +27,21 @@ def run(cfg: Config):
     # for MNIST, the sequence task would be to predict the next rows from the previous
     train_loader, head_train_loader, val_loader = build_dataloaders(cfg.data_config, cfg.problem_type)
 
-    wandb_logger = WandbLogger(project=cfg.project_name, name=cfg.run_name)
-    # log all hyperparameters centrally from Config
-    wandb_logger.log_hyperparams(asdict(cfg))
-    wandb_logger.log_hyperparams({f"encoder_{i}": asdict(v) for i, v in enumerate(cfg.encoders)})
+    trainer_logger = None
+    if cfg.logger == "wandb":
+        trainer_logger = WandbLogger(project=cfg.project_name, name=cfg.run_name)
+        # log all hyperparameters centrally from Config
+        trainer_logger.log_hyperparams(asdict(cfg))
+        trainer_logger.log_hyperparams({f"encoder_{i}": asdict(v) for i, v in enumerate(cfg.encoders)})
+    elif cfg.logger == "csv":
+        trainer_logger = CSVLogger("lightning_logs/", name=cfg.run_name)
 
     pre_model = None
     for i, encoder_cfg in enumerate(cfg.encoders):
         print(f"--- Now training encoder {i} ---")
         pretrain_epochs = len(encoder_cfg.layer_dims) * cfg.epochs * encoder_cfg.recurrence_depth if not cfg.train_encoder_concurrently else cfg.epochs
         pre_trainer = pl.Trainer(max_epochs=pretrain_epochs, accelerator="auto", devices=1,
-                                logger=wandb_logger, enable_checkpointing=False)
+                                logger=trainer_logger, enable_checkpointing=False)
 
         encoder_cls = TRSeqEncoder if cfg.problem_type == "sequence" else TREncoder
         encoder = encoder_cls(cfg, encoder_cfg)
@@ -58,13 +62,13 @@ def run(cfg: Config):
         raise ValueError("Unsupported head_task")
     classifier = head_cls(frozen_encoder, cfg, cfg.head_out_dim)
     classifier_trainer = pl.Trainer(max_epochs=cfg.head_epochs, accelerator="auto", devices=1,
-                                    logger=wandb_logger, enable_checkpointing=False, num_sanity_val_steps=0)
+                                    logger=trainer_logger, enable_checkpointing=False, num_sanity_val_steps=0)
     classifier_trainer.fit(classifier, head_train_loader)
     classifier_trainer.validate(classifier, dataloaders=val_loader)
 
-    final_val_acc = classifier_trainer.callback_metrics.get('classifier_val_acc')
-    if final_val_acc is not None:
-        wandb_logger.experiment.summary["final_val_accuracy"] = final_val_acc.item()
+    final_val_acc = classifier_trainer.callback_metrics.get('classifier_val_acc').item()
+    if final_val_acc is not None and cfg.logger == "wandb":
+        trainer_logger.experiment.summary["final_val_accuracy"] = final_val_acc
 
     # ---- SAVE MODELS TO the requested directory ----
     out_dir = "saved_models/vicreg_9_covar_coarse"
@@ -82,3 +86,4 @@ def run(cfg: Config):
     print(f"Saved hparams -> {hparams_path}")
     print(f"Saved classifier -> {classifier_path}")
 
+    return final_val_acc

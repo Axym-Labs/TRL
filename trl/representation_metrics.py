@@ -122,7 +122,8 @@ class RepresentationMetricsTracker:
           - high_scale_low_sep (D,) boolean
         """
         if self.count == 0:
-            raise RuntimeError("No data; call update() before compute_metrics()")
+            print("Warning in representation metric tracker compute_metrics: No data; call update() before compute_metrics()")
+            return {}
 
         mean = self.sum / self.count
         var = (self.sumsq / self.count) - (mean ** 2)
