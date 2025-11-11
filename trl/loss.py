@@ -8,9 +8,10 @@ from trl.representation_metrics import EmtpyRepresentationMetricsTracker, Repres
 
 
 class TRLoss(nn.Module):
-    def __init__(self, num_features: int, cfg: TRLossConfig, rep_tracker):
+    def __init__(self, num_features: int, cfg: TRLossConfig, rep_tracker, chunk_size: int = None):
         super().__init__()
         self.cfg = cfg
+        self.chunk_size = chunk_size
 
         if self.cfg.var_target_init == "rand":
             t = torch.rand(num_features) * self.cfg.var_sample_factor
@@ -52,10 +53,23 @@ class TRLoss(nn.Module):
         # originally, we compute the MSE on z, but this is mathematically
         # equivalent to the MSE on z_centered
         if self.cfg.consider_last_batch_z: 
+            assert not self.cfg.sim_within_chunks, "consider_last_batch_z and sim_within_chunks are mutually exclusive"
             z_centered = torch.concat([last_z.unsqueeze(0), z_centered], dim=0)
-        diff = z_centered[1:] - z_centered[:-1]
 
-        return (diff ** 2)
+        if self.cfg.sim_within_chunks:
+            B, D = z_centered.shape
+            zc = z_centered.view(B // self.chunk_size, self.chunk_size, D)
+            prev = zc[:, :-1, :]
+            if self.cfg.detach_previous:
+                prev = prev.detach()
+            diff = zc[:, 1:, :] - prev
+            return (diff ** 2).mean(dim=1)  # average over chunk dimension
+        else:
+            prev = z_centered[:-1]
+            if self.cfg.detach_previous:
+                prev = prev.detach()
+            diff = z_centered[1:] - prev
+            return (diff ** 2)
 
     def std_loss(self, var_stat, z_centered):
         var_gd = z_centered.pow(2)
@@ -64,7 +78,14 @@ class TRLoss(nn.Module):
         return std_loss_pn
     
     def cov_loss(self, z_centered, lateral):
-        return z_centered * (lateral(z_centered.detach())).detach()
+        if self.cfg.use_cov_directly:
+            cov = (z_centered.T @ z_centered) / (z_centered.shape[0] - 1)
+            cov.diagonal().zero_()
+            cov_loss = cov.pow_(2).sum()
+
+            return  cov_loss
+        else:
+            return z_centered * (lateral(z_centered.detach())).detach()
     
     def lat_loss(self, cov_stat, lateral):
         # no self-connections
@@ -82,6 +103,9 @@ class TRLoss(nn.Module):
 class TRSeqLoss(TRLoss):
     "TCLoss for training on sequence tasks, ie where inputs are of shape (batch_size, sequence_length, latent_dimension)"
     def sim_loss(self, last_z, z_centered):
+        if self.cfg.sim_within_chunks:
+            raise ValueError("sim_within_chunks is not supported for sequence tasks. The sequence is the chunk.")
+
         B, S, D = z_centered.shape
 
         if self.cfg.consider_last_batch_z:

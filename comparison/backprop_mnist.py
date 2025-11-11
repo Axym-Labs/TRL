@@ -8,14 +8,18 @@ import wandb
 from pytorch_lightning.loggers import WandbLogger
 
 class MNISTModelReLU(pl.LightningModule):
-    def __init__(self, batchnorm, lr, v3=False):
+    def __init__(self, batchnorm, lr, v):
         super().__init__()
         self.lr = lr
-        self.v3 = v3
-        if not v3:
+        self.v = v
+        if v == "1":
             self.init_v1(batchnorm)
-        else:
+        elif v == "2":
+            self.init_v2(batchnorm)
+        elif v == "3":
             self.init_v3(batchnorm)
+        else:
+            raise ValueError("Unsupported model version")
 
     def init_v1(self, batchnorm):
         self.flatten = nn.Flatten()
@@ -26,6 +30,19 @@ class MNISTModelReLU(pl.LightningModule):
         self.bn2 = nn.BatchNorm1d(256) if batchnorm else nn.Identity()
         self.fc3 = nn.Linear(256, 10)
     
+    def init_v2(self, batchnorm):
+        self.flatten = nn.Flatten()
+        h1 = 500
+        h2 = 500
+        h3 = 500
+        self.fc1 = nn.Linear(28 * 28, h1)
+        self.bn1 = nn.BatchNorm1d(h1) if batchnorm else nn.Identity()
+        self.fc2 = nn.Linear(h1, h2)
+        self.bn2 = nn.BatchNorm1d(h2) if batchnorm else nn.Identity()
+        self.fc3 = nn.Linear(h2, h3)
+        self.bn3 = nn.BatchNorm1d(h3) if batchnorm else nn.Identity()
+        self.fc4 = nn.Linear(h3, 10)
+
     def init_v3(self, batchnorm):
         self.flatten = nn.Flatten()
         h1 = 2000
@@ -43,16 +60,26 @@ class MNISTModelReLU(pl.LightningModule):
         self.fc5 = nn.Linear(h4, 10)
 
     def forward(self, x):
-        if self.v3:
-            return self.forward_v3(x)
-        else: 
+        if self.v == "1":
             return self.forward_v1(x)
+        elif self.v == "2":
+            return self.forward_v1(x)
+        elif self.v == "3":
+            return self.forward_v3(x)
 
     def forward_v1(self, x):
         x = self.flatten(x)
         x = F.relu(self.bn1(self.fc1(x)))
         x = F.relu(self.bn2(self.fc2(x)))
         x = self.fc3(x)
+        return x
+
+    def forward_v2(self, x):
+        x = self.flatten(x)
+        x = F.relu(self.bn1(self.fc1(x)))
+        x = F.relu(self.bn2(self.fc2(x)))
+        x = F.relu(self.bn3(self.fc3(x)))
+        x = self.fc4(x)
         return x
     
     def forward_v3(self, x):
@@ -100,7 +127,7 @@ def get_mnist_val_transform():
         transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))
     ])
 
-def run(epochs=60, batch_size=64, batchnorm=True, lr=15e-4, v3=True, seed=43):
+def run(epochs=60, batch_size=64, batchnorm=True, lr=15e-4, v="2", seed=42):
     torch.manual_seed(seed)
     pl.seed_everything(seed)
 
@@ -117,7 +144,7 @@ def run(epochs=60, batch_size=64, batchnorm=True, lr=15e-4, v3=True, seed=43):
 
     # Train ReLU model
     print("Training ReLU Model...")
-    model_relu = MNISTModelReLU(batchnorm=batchnorm, lr=lr, v3=v3)
+    model_relu = MNISTModelReLU(batchnorm=batchnorm, lr=lr, v=v)
     trainer_relu = pl.Trainer(
         max_epochs=epochs,
         logger=wandb_logger,

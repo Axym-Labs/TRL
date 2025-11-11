@@ -92,4 +92,5 @@ def ff_scale_network(conf: Config):
 def beneficial_setup(conf: Config):
     conf.data_config.encoder_augment = True
     conf.train_encoder_concurrently = False
-
+    conf.trloss_config.sim_within_chunks = True
+    # use_cov_directly is not beneficial

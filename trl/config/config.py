@@ -26,6 +26,9 @@ class TRLossConfig:
 
     cov_matrix_sparsity: float = 0.0
     consider_last_batch_z: bool = False
+    sim_within_chunks: bool = False
+    use_cov_directly: bool = False
+    detach_previous: bool = False
 
 @dataclass
 class EncoderConfig:
