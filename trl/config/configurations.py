@@ -1,7 +1,7 @@
 from functools import wraps
-from copy import deepcopy
+import torch
 
-from trl.config.config import Config, EncoderConfig
+from trl.config.config import Config, EncoderConfig, BatchNormConfig
 
 def change_configuration(fn):
     @wraps(fn)
@@ -37,12 +37,14 @@ def batchless(conf: Config):
 
 @change_configuration
 def minimal_batchnorm(conf: Config):
-    assert conf.batchnorm_config is not None
+    assert conf.batchnorm_config is None, "Overwriting existing batchnorm config"
+    conf.batchnorm_config = BatchNormConfig()
 
     conf.batchnorm_config.bias_parameter = False
     conf.batchnorm_config.scale_parameter = False
     conf.batchnorm_config.use_variance = False
     # mean stays True
+    conf.batchnorm_config.use_batch_statistics_training = False
     conf.batchnorm_config.detach_batch_statistics = True
 
 @change_configuration
@@ -66,31 +68,45 @@ def mnist_rnn_setup(conf: Config):
 
 @change_configuration
 def mnist_backprop_comparison_tuning(conf: Config):
-    conf = intermediate_length_run(conf)
+    intermediate_length_run(conf)
     conf.logger = "csv"
-    conf.data_config.encoder_augment = False
-
-@change_configuration
-def mnist_backprop_comparison(conf: Config):
-    conf = long_training(conf)
-    conf.data_config.encoder_augment = False
-
-@change_configuration
-def mnist_backprop_comparison_no_bn(conf: Config):
-    conf = mnist_backprop_comparison(conf)
-    conf.batchnorm_config = None
-    conf.trloss_config.std_coeff = 50.0
-    conf.lr = 3e-4
 
 @change_configuration
 def ff_scale_network(conf: Config):
     conf.encoders = [
         EncoderConfig(((28*28, 2000), *[(2000, 2000) for _ in range(3)])),
     ]
+    conf.trloss_config.cov_matrix_sparsity = 0.5
 
 @change_configuration
-def beneficial_setup(conf: Config):
-    conf.data_config.encoder_augment = True
+def eqprop_scale_network(conf: Config):
+    conf.encoders = [
+        EncoderConfig(((28*28, 500), (500, 500), (500, 500)))
+    ]
+
+@change_configuration
+def standard_setup(conf: Config):
     conf.train_encoder_concurrently = False
     conf.trloss_config.sim_within_chunks = True
     # use_cov_directly is not beneficial
+    # counteracts doulble-z-term in MSE which favors collapse
+    conf.trloss_config.detach_previous = False
+    conf.trloss_config.std_coeff *= 2 # because detach_previous=False
+
+    conf.head_use_layers = [i for i in range(len(conf.encoders[-1].layer_dims))]
+
+@change_configuration
+def aug_and_rbn_setup(conf: Config):
+    conf.data_config.encoder_augment = True
+    conf.batchnorm_config = BatchNormConfig()
+
+    conf.trloss_config.std_coeff /= 2 # because of batchnorm
+    conf.lr = 4e-4
+
+@change_configuration
+def sgd_optim(conf: Config):
+    conf.encoder_optim = torch.optim.SGD
+    conf.trloss_config.use_cov_directly = True
+    conf.encoder_optim = torch.optim.SGD
+    conf.trloss_config.std_coeff *= 2
+

@@ -15,13 +15,14 @@ class EncoderTrainer(pl.LightningModule):
         self.pre_model = pre_model
         self.current_layer_idx = 0
         self.epochs_per_layer = cfg.epochs
+        self.optim_cls = cfg.encoder_optim
         self.automatic_optimization = False
         self.lr = cfg.lr
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, gather_layer_activations: list|None = None) -> torch.Tensor:
         if self.pre_model is not None:
             x = self.pre_model(x)
-        return self.encoder(x)
+        return self.encoder(x, gather_layer_activations=gather_layer_activations)
 
     def training_step(self, batch, batch_idx):
         inp, _labels = batch
@@ -70,7 +71,7 @@ class EncoderTrainer(pl.LightningModule):
             layer_params, lat_params = layer.layer_lat_params()
             all_params.extend(layer_params)
             all_params.extend(lat_params)
-        return torch.optim.Adam(all_params, lr=self.lr)
+            return self.optim_cls(all_params, lr=self.lr)
 
     def on_train_epoch_end(self):
         for i, layer in  self.encoder.enumerate_unique_layers():

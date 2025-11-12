@@ -7,11 +7,35 @@ from torchvision import datasets, transforms
 import wandb
 from pytorch_lightning.loggers import WandbLogger
 
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
+from trl.config.config import Config
+from trl.config.configurations import minimal_batchnorm
+from trl.modules.batchnorm import ConfigurableBatchNorm
+from trl.store import MappingStore
+
+cfg = Config()
+
+def get_minimal_bn(batchnorm: bool, rep_dim: int):
+    if batchnorm:
+        return ConfigurableBatchNorm(out_dim=rep_dim, bn_cfg=minimal_batchnorm().batchnorm_config, problem_type="pass")
+    else:
+        return lambda num_features, cfg: nn.Identity()
+    
+def get_standard_bn(batchnorm: bool, rep_dim: int):
+    if batchnorm:
+        # the default configuration contains a standard batchnorm configuration
+        return ConfigurableBatchNorm(out_dim=rep_dim, bn_cfg=cfg.batchnorm_config, problem_type="pass")
+    else:
+        return lambda num_features, cfg: nn.Identity()
+
 class MNISTModelReLU(pl.LightningModule):
-    def __init__(self, batchnorm, lr, v):
+    def __init__(self, batchnorm, lr, v, bn_factory):
         super().__init__()
         self.lr = lr
         self.v = v
+        self.bn_factory = bn_factory
         if v == "1":
             self.init_v1(batchnorm)
         elif v == "2":
@@ -25,10 +49,13 @@ class MNISTModelReLU(pl.LightningModule):
         self.flatten = nn.Flatten()
         h1 = 512
         self.fc1 = nn.Linear(28 * 28, h1)
-        self.bn1 = nn.BatchNorm1d(h1) if batchnorm else nn.Identity()
+        self.bn1 = self.bn_factory(batchnorm, h1)
         self.fc2 = nn.Linear(h1, 256)
-        self.bn2 = nn.BatchNorm1d(256) if batchnorm else nn.Identity()
+        self.bn2 = self.bn_factory(batchnorm, 256)
         self.fc3 = nn.Linear(256, 10)
+
+        self.store1 = MappingStore(cfg.store_config, h1, "pass")
+        self.store2 = MappingStore(cfg.store_config, 256, "pass")
     
     def init_v2(self, batchnorm):
         self.flatten = nn.Flatten()
@@ -36,12 +63,16 @@ class MNISTModelReLU(pl.LightningModule):
         h2 = 500
         h3 = 500
         self.fc1 = nn.Linear(28 * 28, h1)
-        self.bn1 = nn.BatchNorm1d(h1) if batchnorm else nn.Identity()
+        self.bn1 = self.bn_factory(batchnorm, h1)
         self.fc2 = nn.Linear(h1, h2)
-        self.bn2 = nn.BatchNorm1d(h2) if batchnorm else nn.Identity()
+        self.bn2 = self.bn_factory(batchnorm, h2)
         self.fc3 = nn.Linear(h2, h3)
-        self.bn3 = nn.BatchNorm1d(h3) if batchnorm else nn.Identity()
+        self.bn3 = self.bn_factory(batchnorm, h3)
         self.fc4 = nn.Linear(h3, 10)
+
+        self.store1 = MappingStore(cfg.store_config, h1, "pass")
+        self.store2 = MappingStore(cfg.store_config, h2, "pass")
+        self.store3 = MappingStore(cfg.store_config, h3, "pass")
 
     def init_v3(self, batchnorm):
         self.flatten = nn.Flatten()
@@ -50,14 +81,19 @@ class MNISTModelReLU(pl.LightningModule):
         h3 = 2000
         h4 = 2000
         self.fc1 = nn.Linear(28 * 28, h1)
-        self.bn1 = nn.BatchNorm1d(h1) if batchnorm else nn.Identity()
+        self.bn1 = self.bn_factory(batchnorm, h1)
         self.fc2 = nn.Linear(h1, h2)
-        self.bn2 = nn.BatchNorm1d(h2) if batchnorm else nn.Identity()
+        self.bn2 = self.bn_factory(batchnorm, h2)
         self.fc3 = nn.Linear(h2, h3)
-        self.bn3 = nn.BatchNorm1d(h3) if batchnorm else nn.Identity()
+        self.bn3 = self.bn_factory(batchnorm, h3)
         self.fc4 = nn.Linear(h3, h4)
-        self.bn4 = nn.BatchNorm1d(h4) if batchnorm else nn.Identity()
+        self.bn4 = self.bn_factory(batchnorm, h4)
         self.fc5 = nn.Linear(h4, 10)
+
+        self.store1 = MappingStore(cfg.store_config, h1, "pass")
+        self.store2 = MappingStore(cfg.store_config, h2, "pass")
+        self.store3 = MappingStore(cfg.store_config, h3, "pass")
+        self.store4 = MappingStore(cfg.store_config, h4, "pass")
 
     def forward(self, x):
         if self.v == "1":
@@ -69,29 +105,29 @@ class MNISTModelReLU(pl.LightningModule):
 
     def forward_v1(self, x):
         x = self.flatten(x)
-        x = F.relu(self.bn1(self.fc1(x)))
-        x = F.relu(self.bn2(self.fc2(x)))
+        x = F.relu(self.bn1(self.fc1(x), self.store1))
+        x = F.relu(self.bn2(self.fc2(x), self.store2))
         x = self.fc3(x)
         return x
 
     def forward_v2(self, x):
         x = self.flatten(x)
-        x = F.relu(self.bn1(self.fc1(x)))
-        x = F.relu(self.bn2(self.fc2(x)))
-        x = F.relu(self.bn3(self.fc3(x)))
+        x = F.relu(self.bn1(self.fc1(x), self.store1))
+        x = F.relu(self.bn2(self.fc2(x), self.store2))
+        x = F.relu(self.bn3(self.fc3(x), self.store3))
         x = self.fc4(x)
         return x
     
     def forward_v3(self, x):
         x = self.flatten(x)
         x = self.fc1(x)
-        x = F.relu(self.bn1(x))
+        x = F.relu(self.bn1(x, self.store1))
         x = self.fc2(x)
-        x = F.relu(self.bn2(x))
+        x = F.relu(self.bn2(x, self.store2))
         x = self.fc3(x)
-        x = F.relu(self.bn3(x))
+        x = F.relu(self.bn3(x, self.store3))
         x = self.fc4(x)
-        x = F.relu(self.bn4(x))
+        x = F.relu(self.bn4(x, self.store4))
         x = self.fc5(x)
         return x
 
@@ -127,13 +163,13 @@ def get_mnist_val_transform():
         transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))
     ])
 
-def run(epochs=60, batch_size=64, batchnorm=True, lr=15e-4, v="2", seed=42):
+def run(epochs=1, batch_size=64, batchnorm=False, lr=15e-4, v="1", seed=42):
     torch.manual_seed(seed)
     pl.seed_everything(seed)
 
     # Load MNIST dataset
     # no augmentation: it decreases validation performance
-    train_dataset = datasets.MNIST('data', train=True, download=True, transform=get_mnist_val_transform())
+    train_dataset = datasets.MNIST('data', train=True, download=True, transform=get_mnist_augment())
     val_dataset = datasets.MNIST('data', train=False, transform=get_mnist_val_transform())
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size)
@@ -144,7 +180,7 @@ def run(epochs=60, batch_size=64, batchnorm=True, lr=15e-4, v="2", seed=42):
 
     # Train ReLU model
     print("Training ReLU Model...")
-    model_relu = MNISTModelReLU(batchnorm=batchnorm, lr=lr, v=v)
+    model_relu = MNISTModelReLU(batchnorm=batchnorm, lr=lr, v=v, bn_factory=get_minimal_bn)
     trainer_relu = pl.Trainer(
         max_epochs=epochs,
         logger=wandb_logger,

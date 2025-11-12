@@ -12,14 +12,19 @@ class ClassifierHead(pl.LightningModule):
         self.cfg = cfg
         self.encoder = encoder
         self.encoder.eval()
-        self.rep_dim = self.encoder.encoder.rep_dim
+        self.rep_dim = self.encoder.encoder.rep_dim if cfg.head_use_layers is None else \
+            sum([self.encoder.encoder.layers[i].lin.out_features for i in cfg.head_use_layers])
         self.mapping = nn.Linear(self.rep_dim, out_dim)
         self.criterion = nn.CrossEntropyLoss()
         self.lr = cfg.lr
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         with torch.no_grad():
-            reps = self.encoder(x)
+            if self.cfg.head_use_layers is not None:
+                reps = self.encoder(x, gather_layer_activations=self.cfg.head_use_layers)
+                reps = torch.cat(reps, dim=-1)
+            else:
+                reps = self.encoder(x)
         return self.mapping(reps.detach())
     
     def training_step(self, batch, batch_idx):

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Tuple
 from torch import nn as nn
+import torch
 
 @dataclass
 class BatchNormConfig:
@@ -19,16 +20,23 @@ class TRLossConfig:
     var_sample_factor: float = 1.0
     bidirectional_variance_loss: bool = False
 
-    sim_coeff: float = 10.0
-    std_coeff: float = 25.0
-    cov_coeff: float = 12.0
-    lat_coeff: float = 12.0
+    # good if detach_previous is False
+    # sim_coeff: float = 10.0
+    # std_coeff: float = 25.0
+    # cov_coeff: float = 12.0
+    # lat_coeff: float = 12.0
+
+    # if detach_previous is True
+    sim_coeff: float = 1.0
+    std_coeff: float = 2.5
+    cov_coeff: float = 1.0
+    lat_coeff: float = 1.2
 
     cov_matrix_sparsity: float = 0.0
     consider_last_batch_z: bool = False
     sim_within_chunks: bool = False
     use_cov_directly: bool = False
-    detach_previous: bool = False
+    detach_previous: bool = True
 
 @dataclass
 class EncoderConfig:
@@ -54,7 +62,7 @@ class DataConfig:
     num_workers: int = 8
     pin_memory: bool = False
 
-    encoder_augment: bool = True
+    encoder_augment: bool = False
     
     batch_size: int = 64
     chunk_size: int = 16 # size of coherent same-class chunks
@@ -67,6 +75,10 @@ class Config:
     # wandb or csv
     logger: str = "wandb"
     track_representations: bool = False
+    # specify which layers the head uses
+    # None: uses last layer
+    head_use_layers: list|None = None
+    encoder_optim: type[torch.optim.Optimizer] = torch.optim.Adam
 
     seed: int = 42
     # pass -> a simple forward pass
@@ -81,11 +93,11 @@ class Config:
     train_encoder_concurrently: bool = True
     epochs: int = 5
     head_epochs: int = 10
-    lr: float = 1e-3
+    lr: float = 1e-4
 
     data_config: DataConfig = DataConfig()
     trloss_config: TRLossConfig = TRLossConfig()
-    batchnorm_config: BatchNormConfig|None = BatchNormConfig()
+    batchnorm_config: BatchNormConfig|None = None
     store_config: StoreConfig = StoreConfig()
 
     encoders = [
