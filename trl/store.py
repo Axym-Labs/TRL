@@ -33,12 +33,12 @@ class MappingStore:
     def __init__(self, cfg: StoreConfig, out_dim: int, problem_type: str):
         self.batchless_updates = cfg.batchless_updates
         pre_m, post_m = cfg.pre_stats_momentum, cfg.post_stats_momentum
-        self.mu=LeakyIntegrator(torch.zeros(out_dim), post_m, overwrite_at_start=cfg.overwrite_at_start)
-        self.var=LeakyIntegrator(torch.ones(out_dim), pre_m, overwrite_at_start=cfg.overwrite_at_start)
-        self.cov=LeakyIntegrator(torch.zeros((out_dim, out_dim)), cfg.cov_momentum, overwrite_at_start=cfg.overwrite_at_start)
-        self.last_z=LeakyIntegrator(torch.zeros(out_dim), cfg.last_z_momentum, overwrite_at_start=cfg.overwrite_at_start)
-        self.pre_nonlin_mu=LeakyIntegrator(torch.zeros(out_dim), pre_m, overwrite_at_start=cfg.overwrite_at_start)
-        self.pre_nonlin_var=LeakyIntegrator(torch.ones(out_dim), pre_m, overwrite_at_start=cfg.overwrite_at_start)
+        self.mu=LeakyIntegrator(torch.zeros(out_dim, device=cfg.device), post_m, overwrite_at_start=cfg.overwrite_at_start)
+        self.var=LeakyIntegrator(torch.ones(out_dim, device=cfg.device), pre_m, overwrite_at_start=cfg.overwrite_at_start)
+        self.cov=LeakyIntegrator(torch.zeros((out_dim, out_dim), device=cfg.device), cfg.cov_momentum, overwrite_at_start=cfg.overwrite_at_start)
+        self.last_z=LeakyIntegrator(torch.zeros(out_dim, device=cfg.device), cfg.last_z_momentum, overwrite_at_start=cfg.overwrite_at_start)
+        self.pre_nonlin_mu=LeakyIntegrator(torch.zeros(out_dim, device=cfg.device), pre_m, overwrite_at_start=cfg.overwrite_at_start)
+        self.pre_nonlin_var=LeakyIntegrator(torch.ones(out_dim, device=cfg.device), pre_m, overwrite_at_start=cfg.overwrite_at_start)
         self.problem_type = problem_type
 
     def update_pre(self, z_pre: torch.Tensor):

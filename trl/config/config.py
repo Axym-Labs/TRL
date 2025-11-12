@@ -56,6 +56,8 @@ class StoreConfig:
     overwrite_at_start: bool = False
     batchless_updates: bool = False 
 
+    device: str = "cuda:0"
+
 @dataclass
 class DataConfig:
     data_path: str = "./data"
