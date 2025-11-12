@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Tuple
 from torch import nn as nn
 import torch
@@ -95,10 +95,10 @@ class Config:
     head_epochs: int = 10
     lr: float = 1e-4
 
-    data_config: DataConfig = DataConfig()
-    trloss_config: TRLossConfig = TRLossConfig()
+    data_config: DataConfig = field(default_factory=DataConfig)
+    trloss_config: TRLossConfig = field(default_factory=TRLossConfig)
     batchnorm_config: BatchNormConfig|None = None
-    store_config: StoreConfig = StoreConfig()
+    store_config: StoreConfig = field(default_factory=StoreConfig)
 
     encoders = [
         EncoderConfig(((28*28, 512), (512, 256)))
