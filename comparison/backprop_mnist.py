@@ -17,18 +17,23 @@ from trl.store import MappingStore
 
 cfg = Config()
 
+class IdentityIgnoringExtraArgs(nn.Module):
+    def forward(self, x, *args, **kwargs):
+        return x
+
+
 def get_minimal_bn(batchnorm: bool, rep_dim: int):
     if batchnorm:
         return ConfigurableBatchNorm(out_dim=rep_dim, bn_cfg=minimal_batchnorm().batchnorm_config, problem_type="pass")
     else:
-        return lambda num_features, cfg: nn.Identity()
+        return IdentityIgnoringExtraArgs()
     
 def get_standard_bn(batchnorm: bool, rep_dim: int):
     if batchnorm:
         # the default configuration contains a standard batchnorm configuration
         return ConfigurableBatchNorm(out_dim=rep_dim, bn_cfg=cfg.batchnorm_config, problem_type="pass")
     else:
-        return lambda num_features, cfg: nn.Identity()
+        return IdentityIgnoringExtraArgs()
 
 class MNISTModelReLU(pl.LightningModule):
     def __init__(self, batchnorm, lr, v, bn_factory):
@@ -163,7 +168,7 @@ def get_mnist_val_transform():
         transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))
     ])
 
-def run(epochs=1, batch_size=64, batchnorm=False, lr=15e-4, v="1", seed=42):
+def run(epochs=60, batch_size=64, batchnorm=True, lr=15e-4, v="1", seed=42):
     torch.manual_seed(seed)
     pl.seed_everything(seed)
 
