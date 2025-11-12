@@ -103,3 +103,6 @@ class Config:
     encoders = [
         EncoderConfig(((28*28, 512), (512, 256)))
     ]
+
+    def setup_head_use_layers(self):
+        self.head_use_layers = [i for i in range(len(self.encoders[-1].layer_dims))]

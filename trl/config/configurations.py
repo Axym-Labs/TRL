@@ -93,7 +93,6 @@ def standard_setup(conf: Config):
     conf.trloss_config.detach_previous = False
     conf.trloss_config.std_coeff *= 2 # because detach_previous=False
 
-    conf.head_use_layers = [i for i in range(len(conf.encoders[-1].layer_dims))]
 
 @change_configuration
 def aug_and_rbn_setup(conf: Config):
@@ -110,3 +109,6 @@ def sgd_optim(conf: Config):
     conf.encoder_optim = torch.optim.SGD
     conf.trloss_config.std_coeff *= 2
 
+@change_configuration
+def finish_setup(conf: Config):
+    conf.setup_head_use_layers()

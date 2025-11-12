@@ -10,7 +10,7 @@ from pytorch_lightning.loggers import WandbLogger
 import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from trl.config.config import Config
+from trl.config.config import Config, BatchNormConfig
 from trl.config.configurations import minimal_batchnorm
 from trl.modules.batchnorm import ConfigurableBatchNorm
 from trl.store import MappingStore
@@ -31,7 +31,7 @@ def get_minimal_bn(batchnorm: bool, rep_dim: int):
 def get_standard_bn(batchnorm: bool, rep_dim: int):
     if batchnorm:
         # the default configuration contains a standard batchnorm configuration
-        return ConfigurableBatchNorm(out_dim=rep_dim, bn_cfg=cfg.batchnorm_config, problem_type="pass")
+        return ConfigurableBatchNorm(out_dim=rep_dim, bn_cfg=BatchNormConfig(), problem_type="pass")
     else:
         return IdentityIgnoringExtraArgs()
 
@@ -168,7 +168,7 @@ def get_mnist_val_transform():
         transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))
     ])
 
-def run(epochs=60, batch_size=64, batchnorm=True, lr=15e-4, v="1", seed=42):
+def run(epochs=60, batch_size=64, batchnorm=True, lr=15e-4, v="1", seed=46):
     torch.manual_seed(seed)
     pl.seed_everything(seed)
 
@@ -185,7 +185,7 @@ def run(epochs=60, batch_size=64, batchnorm=True, lr=15e-4, v="1", seed=42):
 
     # Train ReLU model
     print("Training ReLU Model...")
-    model_relu = MNISTModelReLU(batchnorm=batchnorm, lr=lr, v=v, bn_factory=get_minimal_bn)
+    model_relu = MNISTModelReLU(batchnorm=batchnorm, lr=lr, v=v, bn_factory=get_standard_bn)
     trainer_relu = pl.Trainer(
         max_epochs=epochs,
         logger=wandb_logger,
