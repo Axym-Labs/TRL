@@ -93,7 +93,7 @@ class Config:
     # different encoders are trained in sequence
     # within encoders, layers can be trained concurrently
     train_encoder_concurrently: bool = True
-    epochs: int = 5
+    epochs: int = 10
     head_epochs: int = 10
     lr: float = 1e-4
 

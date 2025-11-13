@@ -27,9 +27,11 @@ def long_training(conf: Config):
 def batchless(conf: Config):
     conf.data_config.batch_size = 1
     conf.data_config.chunk_size = 3
-    conf.store_config.pre_stats_momentum = 0.9994
-    conf.store_config.post_stats_momentum = 0.9994
-    conf.store_config.cov_momentum = 0.9994
+    conf.store_config.pre_stats_momentum = 0.99 # 0.9994
+    conf.store_config.post_stats_momentum = 0.99 # 0.9994
+    conf.store_config.cov_momentum = 0.99 # 0.9994
+    conf.lr /= 50
+    conf.trloss_config.std_coeff /= 2
     conf.store_config.batchless_updates = True
     conf.trloss_config.consider_last_batch_z = True
     if conf.batchnorm_config is not None:

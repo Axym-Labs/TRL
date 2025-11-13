@@ -4,10 +4,13 @@ from trl import run_training
 from trl.config.configurations import *
 
 if __name__ == "__main__":
-    cfg = long_training()
+    # cfg = long_training()
+
+    cfg = Config()
+    # cfg.store_config.device = "cpu"
     # cfg = intermediate_length_run(cfg)
 
-    eqprop_scale_network(cfg)
+    # eqprop_scale_network(cfg)
     # cfg = ff_scale_network(cfg)
 
     standard_setup(cfg)
