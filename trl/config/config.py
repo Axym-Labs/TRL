@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import Tuple
 from torch import nn as nn
 import torch
+import torch.nn.functional as F
 
 @dataclass
 class BatchNormConfig:
@@ -38,12 +39,16 @@ class TRLossConfig:
     use_cov_directly: bool = False
     detach_previous: bool = True
 
+    variance_hinge_fn = F.relu
+    sim_loss_fn = lambda self, a, b: F.mse_loss(a, b)
+
 @dataclass
 class EncoderConfig:
     layer_dims: Tuple[Tuple[int, int], ...]
     layer_bias: bool = True
     recurrence_depth: int = 1
-    activaton_fn: type[nn.Module] = nn.ReLU
+    activation_fn: type[nn.Module] = nn.ReLU
+    activation_fn_requires_dim: bool = False
 
 @dataclass
 class StoreConfig:
@@ -61,7 +66,7 @@ class StoreConfig:
 @dataclass
 class DataConfig:
     data_path: str = "./data"
-    num_workers: int = 8
+    num_workers: int = 1
     pin_memory: bool = False
 
     encoder_augment: bool = False

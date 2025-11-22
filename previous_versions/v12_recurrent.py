@@ -51,7 +51,7 @@ class EncoderConfig:
     layer_dims: Tuple[Tuple[int, int], ...]
     layer_bias: bool = True
     recurrence_depth: int = 1
-    activaton_fn: type[nn.Module] = nn.ReLU
+    activation_fn: type[nn.Module] = nn.ReLU
 
 @dataclass(frozen=True)
 class StoreConfig:
@@ -93,8 +93,8 @@ class Config:
 
     encoders = [
         EncoderConfig(((28*28, 512), (512, 256))) # old version
-        # EncoderConfig(((28*28, 128),), activaton_fn=nn.ReLU), # downsizer, adds sparsity via Tanh
-        # EncoderConfig(tuple([(128, 128) for _ in range(9)]), recurrence_depth=1, activaton_fn=nn.ReLU)
+        # EncoderConfig(((28*28, 128),), activation_fn=nn.ReLU), # downsizer, adds sparsity via Tanh
+        # EncoderConfig(tuple([(128, 128) for _ in range(9)]), recurrence_depth=1, activation_fn=nn.ReLU)
     ]
 
 
@@ -418,7 +418,7 @@ class TCEncoder(nn.Module):
         self.layers = nn.ModuleList()
         for in_dim, out_dim in layer_dims:
             norm = ConfigurableBatchNorm(out_dim, cfg.batchnorm_config) if cfg.batchnorm_config is not None else None
-            act_fn = encoder_cfg.activaton_fn()
+            act_fn = encoder_cfg.activation_fn()
             self.layers.append(NormalizedMapping(cfg, in_dim, out_dim, norm, encoder_cfg.layer_bias, act_fn))
         
     @property

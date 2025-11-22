@@ -62,19 +62,20 @@ class TRLoss(nn.Module):
             prev = zc[:, :-1, :]
             if self.cfg.detach_previous:
                 prev = prev.detach()
-            diff = zc[:, 1:, :] - prev
-            return (diff ** 2).mean(dim=1)  # average over chunk dimension
+            cur = zc[:, 1:, :]
+            # old implemetation with manual MSE loss used average over chunk dimension d=1
+            return self.cfg.sim_loss_fn(cur, prev) 
         else:
             prev = z_centered[:-1]
             if self.cfg.detach_previous:
                 prev = prev.detach()
-            diff = z_centered[1:] - prev
-            return (diff ** 2)
+            cur = z_centered[1:]
+            return self.cfg.sim_loss_fn(cur, prev)
 
     def std_loss(self, var_stat, z_centered):
         var_gd = z_centered.pow(2)
         diff = self.variance_targets - var_stat
-        std_loss_pn = -F.relu(diff) * var_gd if not self.cfg.bidirectional_variance_loss else -diff * var_gd
+        std_loss_pn = -self.cfg.variance_hinge_fn(diff) * var_gd if not self.cfg.bidirectional_variance_loss else -diff * var_gd
         return std_loss_pn
     
     def cov_loss(self, z_centered, lateral):

@@ -17,7 +17,7 @@ class TREncoder(nn.Module):
         self.layers = nn.ModuleList()
         for in_dim, out_dim in encoder_cfg.layer_dims:
             norm = ConfigurableBatchNorm(out_dim, cfg.batchnorm_config, cfg.problem_type) if cfg.batchnorm_config is not None else None
-            act_fn = encoder_cfg.activaton_fn()
+            act_fn = encoder_cfg.activation_fn() if not encoder_cfg.activation_fn_requires_dim else encoder_cfg.activation_fn(out_dim)
             self.layers.append(NormalizedMapping(cfg, in_dim, out_dim, norm, encoder_cfg.layer_bias, act_fn))
         
     @property

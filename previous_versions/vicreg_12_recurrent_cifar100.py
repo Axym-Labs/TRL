@@ -361,7 +361,7 @@ class EncoderConfig:
     layer_dims: Tuple[Tuple[int, int], ...] = ()
     layer_bias: bool = True
     recurrence_depth: int = 1
-    activaton_fn: type[nn.Module] = nn.ReLU
+    activation_fn: type[nn.Module] = nn.ReLU
 
 @dataclass(frozen=True)
 class Config:
