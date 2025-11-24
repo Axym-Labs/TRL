@@ -64,7 +64,7 @@ class TRLoss(nn.Module):
                 prev = prev.detach()
             cur = zc[:, 1:, :]
             # old implemetation with manual MSE loss used average over chunk dimension d=1
-            return self.cfg.sim_loss_fn(cur, prev) 
+            return self.cfg.sim_loss_fn(cur, prev).mean(dim=1)
         else:
             prev = z_centered[:-1]
             if self.cfg.detach_previous:

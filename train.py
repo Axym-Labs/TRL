@@ -5,18 +5,17 @@ from trl import run_training
 from trl.config.configurations import *
 
 if __name__ == "__main__":
-    cfg = intermediate_length_run()
-
-    # cfg = Config()
+    cfg = Config()
     cfg.store_config.device = "cpu"
-    cfg.trloss_config.variance_hinge_fn = F.softplus
 
-    # cfg = intermediate_length_run(cfg)
+    # long_training(cfg)
+    intermediate_length_run(cfg)
 
     # eqprop_scale_network(cfg)
     # cfg = ff_scale_network(cfg)
 
     standard_setup(cfg)
+    sgd_optim(cfg)
 
     # cfg = aug_and_rbn_setup(cfg)
 

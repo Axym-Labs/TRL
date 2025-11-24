@@ -8,7 +8,8 @@ def change_configuration(fn):
     def wrapper(conf=None, **kwargs):
         conf_new = conf or Config()
         fn(conf_new, **kwargs)
-        conf_new.run_name = conf_new.run_name + " " + fn.__name__
+        if fn.__name__ != "finish_setup":
+            conf_new.run_name = conf_new.run_name + " " + fn.__name__
         return conf_new
     
     return wrapper
@@ -88,6 +89,7 @@ def eqprop_scale_network(conf: Config):
 
 @change_configuration
 def standard_setup(conf: Config):
+    conf.head_use_layers = True
     conf.train_encoder_concurrently = False
     conf.trloss_config.sim_within_chunks = True
     # use_cov_directly is not beneficial

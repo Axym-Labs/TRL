@@ -39,8 +39,8 @@ class TRLossConfig:
     use_cov_directly: bool = False
     detach_previous: bool = True
 
-    variance_hinge_fn = F.relu
-    sim_loss_fn = lambda self, a, b: F.mse_loss(a, b)
+    variance_hinge_fn = lambda self, x: F.relu(x)
+    sim_loss_fn = lambda self, a, b: (a-b)**2
 
 @dataclass
 class EncoderConfig:
@@ -61,7 +61,7 @@ class StoreConfig:
     overwrite_at_start: bool = False
     batchless_updates: bool = False 
 
-    device: str = "cuda:0"
+    device: str = "cpu"
 
 @dataclass
 class DataConfig:
@@ -83,8 +83,9 @@ class Config:
     logger: str = "wandb"
     track_representations: bool = False
     # specify which layers the head uses
-    # None: uses last layer
-    head_use_layers: list|None = None
+    # False: uses last layer, True: use all layers
+    # finish_setup converts it to either the specified layers or None
+    head_use_layers: list|bool|None = True
     encoder_optim: type[torch.optim.Optimizer] = torch.optim.Adam
 
     seed: int = 42
@@ -112,4 +113,8 @@ class Config:
     ]
 
     def setup_head_use_layers(self):
-        self.head_use_layers = [i for i in range(len(self.encoders[-1].layer_dims))]
+        if self.head_use_layers is True:
+            self.head_use_layers = [i for i in range(len(self.encoders[-1].layer_dims))]
+        elif self.head_use_layers is False:
+            self.head_use_layers = None
+
