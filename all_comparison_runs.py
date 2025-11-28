@@ -46,23 +46,23 @@ if __name__ == "__main__":
     # cfg.head_epochs = 1
     # run_with_seeds(cfg, num_runs=1)
 
-    print_section("512->256 TRL")
-    run_with_seeds(standard_setup(long_training(base_cfg())), seed_start_at=43, num_runs=4)
+    # print_section("512->256 TRL")
+    # run_with_seeds(standard_setup(long_training(base_cfg())), seed_start_at=43, num_runs=4)
 
-    print_section("\n512->256 TRL-S")
-    run_with_seeds(long_training(base_cfg()), seed_start_at=43, num_runs=4)
+    # print_section("\n512->256 TRL-S")
+    # run_with_seeds(long_training(base_cfg()), seed_start_at=43, num_runs=4)
 
-    print_section("512->256 TRL AUG & BN")
-    run_with_seeds(aug_and_rbn_setup(standard_setup(long_training(base_cfg()))))
+    # print_section("512->256 TRL AUG & BN")
+    # run_with_seeds(aug_and_rbn_setup(standard_setup(long_training(base_cfg()))))
     
-    print_section("\n512->256 TRL-S AUG & BN")
-    run_with_seeds(aug_and_rbn_setup(long_training(base_cfg())))
+    # print_section("\n512->256 TRL-S AUG & BN")
+    # run_with_seeds(aug_and_rbn_setup(long_training(base_cfg())))
 
-    print_section("\nEqprop Scale TRL")
-    run_with_seeds(eqprop_scale_network(standard_setup(long_training(base_cfg()))))
+    # print_section("\nEqprop Scale TRL")
+    # run_with_seeds(eqprop_scale_network(standard_setup(long_training(base_cfg()))))
 
-    print_section("\nEqProp Scale TRL-S")
-    run_with_seeds(eqprop_scale_network(long_training(base_cfg())))
+    # print_section("\nEqProp Scale TRL-S")
+    # run_with_seeds(eqprop_scale_network(long_training(base_cfg())))
 
     print_section("\nFF Scale TRL")
     run_with_seeds(ff_scale_network(standard_setup(long_training(base_cfg()))))
