@@ -15,7 +15,7 @@ if __name__ == "__main__":
     # cfg = ff_scale_network(cfg)
 
     standard_setup(cfg)
-    sgd_optim(cfg)
+    # sgd_optim(cfg)
 
     # cfg = aug_and_rbn_setup(cfg)
 
