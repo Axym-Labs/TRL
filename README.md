@@ -1,6 +1,9 @@
 
 # Temporal Regularized Learning
 
+- Read the paper here: https://axym.org/files/TRL.pdf
+- Zenodo: https://zenodo.org/records/17840254
+
 Temporal Regularized Learning (TRL) is a highly local and self-supervised prodecure that optimizes
 each neuron individually. We adapt the self-supervised loss formulation of VICReg, consisting
 of variance, invariance and covariance to input streams with sequential coherence and for online-
@@ -13,7 +16,8 @@ performance despite its simplified setup. We show TRL creates neurons with speci
 fields at the first layer. In later layers, some neurons specialize by activating only for some types of
 input.
 
-- Repository of the paper "**Temporal Regularized Learning: Self-Supervised learning local in space and time**"
+- This is the repository of the paper "**Temporal Regularized Learning: Self-Supervised learning local in space and time**"
 - Train a TRL model with `train.py`.
 - `trl/config/configurations.py` contains functions that modify the setup, e.g. modify the model architecture.
-- Link to the paper: https://axym.org/files/TRL.pdf
+
+- 
