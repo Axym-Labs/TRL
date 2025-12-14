@@ -3,6 +3,8 @@
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17840254.svg)](https://doi.org/10.5281/zenodo.17840254)
 [![ResearchGate](https://img.shields.io/badge/Read%20on-ResearchGate-00cc66.svg)](https://www.researchgate.net/publication/398409613_Temporal_Regularized_Learning_Self-supervised_learning_local_in_space_and_time)
+
+
 **[Paper PDF](https://axym.org/files/TRL.pdf)**
 
 Temporal Regularized Learning (TRL) is a highly local and self-supervised prodecure that optimizes
