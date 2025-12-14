@@ -1,5 +1,5 @@
 
-# Temporal Regularized Learning: Self-supervised learning local in space and time
+# Temporal Regularized Learning: Self-Supervised Learning Local In Space And Time
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17840254.svg)](https://doi.org/10.5281/zenodo.17840254)
 [![ResearchGate](https://img.shields.io/badge/Read%20on-ResearchGate-00cc66.svg)](https://www.researchgate.net/publication/398409613_Temporal_Regularized_Learning_Self-supervised_learning_local_in_space_and_time)
@@ -30,6 +30,8 @@ Cite the paper:
 }
 ```
 
-- This is the repository of the paper "**Temporal Regularized Learning: Self-Supervised learning local in space and time**"
+
+### Quickstart
 - Train a TRL model with `train.py`.
 - `trl/config/configurations.py` contains functions that modify the setup, e.g. modify the model architecture.
+- The `previous_versions` folder has a README with short explanations of what changed in each version.
