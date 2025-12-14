@@ -1,7 +1,10 @@
 
-# Temporal Regularized Learning
+# Temporal Regularized Learning: Self-supervised learning local in space and time
 
-- Read the paper here: https://axym.org/files/TRL.pdf
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17840254.svg)](https://doi.org/10.5281/zenodo.17840254)
+[![ResearchGate](https://img.shields.io/badge/Read%20on-ResearchGate-00cc66.svg)](https://www.researchgate.net/publication/398409613_Temporal_Regularized_Learning_Self-supervised_learning_local_in_space_and_time)
+
+- **[Read the paper here][https://axym.org/files/TRL.pdf)**
 - DOI: https://doi.org/10.5281/zenodo.17840254
 - Zenodo: https://zenodo.org/records/17840254
 - ResearchGate: [https://www.researchgate.net/publication/398409613_Temporal...](https://www.researchgate.net/publication/398409613_Temporal_Regularized_Learning_Self-supervised_learning_local_in_space_and_time)
@@ -17,6 +20,19 @@ backpropagation, Forward-Forward and Equilibrium Propagation, while TRL-S achiev
 performance despite its simplified setup. We show TRL creates neurons with specialized receptive
 fields at the first layer. In later layers, some neurons specialize by activating only for some types of
 input.
+
+Cite the paper:
+
+```
+@misc{Wiest2025,
+  author       = {Wiest, Davide},
+  title        = {{Temporal Regularized Learning: Self-supervised learning local in space and time}},
+  publisher    = {Zenodo},
+  year         = {2025},
+  doi          = {10.5281/zenodo.17840254},
+  url          = {https://doi.org/10.5281/zenodo.17840254}
+}
+```
 
 - This is the repository of the paper "**Temporal Regularized Learning: Self-Supervised learning local in space and time**"
 - Train a TRL model with `train.py`.
