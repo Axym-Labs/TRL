@@ -18,24 +18,36 @@ def supervised_contrastive_loss(z: torch.Tensor, y: torch.Tensor, temperature: f
     if z.ndim != 2:
         raise ValueError(f"Expected (B, D) activations, got {tuple(z.shape)}")
 
+    # Keep cosine geometry by normalizing in-function.
     z = F.normalize(z, dim=1)
-    sim = (z @ z.T) / temperature
-    logits_max = sim.max(dim=1, keepdim=True).values
-    logits = sim - logits_max.detach()
+    device = z.device
+    y = y.contiguous().view(-1, 1)
+    mask_pos = torch.eq(y, y.T).float().to(device)
+    batch_size = z.shape[0]
 
-    B = y.shape[0]
-    eye = torch.eye(B, device=z.device, dtype=torch.bool)
-    pos_mask = (y.unsqueeze(0) == y.unsqueeze(1)) & ~eye
+    pos_per_row = mask_pos.sum(1) - 1
+    if pos_per_row.max() < 1:
+        return torch.tensor(0.0, device=device, requires_grad=True)
 
-    exp_logits = torch.exp(logits) * (~eye)
+    logits = torch.matmul(z, z.T) / temperature
+    logits_mask = (~torch.eye(batch_size, dtype=torch.bool, device=device)).float()
+
+    logits_max, _ = torch.max(
+        logits * logits_mask + (1.0 - logits_mask) * -1e9, dim=1, keepdim=True
+    )
+    logits = logits - logits_max.detach()
+
+    exp_logits = torch.exp(logits) * logits_mask
+    exp_logits = torch.nan_to_num(exp_logits, nan=0.0)
     log_prob = logits - torch.log(exp_logits.sum(dim=1, keepdim=True) + 1e-12)
 
-    pos_count = pos_mask.sum(dim=1)
-    valid = pos_count > 0
-    if not torch.any(valid):
-        return torch.tensor(0.0, device=z.device)
+    pos_mask = mask_pos * logits_mask
+    denom_pos = pos_mask.sum(dim=1)
+    valid = denom_pos > 0
+    if valid.sum() == 0:
+        return torch.tensor(0.0, device=device, requires_grad=True)
 
-    mean_log_prob_pos = (log_prob * pos_mask).sum(dim=1) / pos_count.clamp_min(1)
+    mean_log_prob_pos = (pos_mask * log_prob).sum(dim=1) / (denom_pos + 1e-12)
     return -mean_log_prob_pos[valid].mean()
 
 
@@ -51,15 +63,28 @@ class LocalContrastiveTrainer(pl.LightningModule):
 
     def forward(self, x):
         if self.pre_model is not None:
-            x = self.pre_model(x)
+            with torch.no_grad():
+                x = self.pre_model(x)
+            x = x.detach()
         return self.encoder(x)
+
+    def local_layer_activations(self, x):
+        cur = self.encoder.prepare_input(x)
+        acts = []
+        for _pass_i, _unique_i, layer in self.encoder.enumerate_pass_layers():
+            z = layer(cur)
+            acts.append(z)
+            # Enforce locality: no cross-layer backprop in local-SupCon.
+            cur = z.detach()
+        return acts
 
     def training_step(self, batch, _batch_idx):
         x, y = batch
         if self.pre_model is not None:
             with torch.no_grad():
                 x = self.pre_model(x)
-        acts = self.encoder.gather_layer_activations(x, no_grad=False)
+            x = x.detach()
+        acts = self.local_layer_activations(x)
 
         total = torch.tensor(0.0, device=x.device)
         for i, z in enumerate(acts):
@@ -74,7 +99,7 @@ class LocalContrastiveTrainer(pl.LightningModule):
         return torch.optim.Adam(self.encoder.parameters(), lr=self.lr)
 
 
-def run(cfg: Config):
+def run(cfg: Config, return_metrics: bool = False):
     random.seed(cfg.seed)
     np.random.seed(cfg.seed)
     torch.manual_seed(cfg.seed)
@@ -113,10 +138,13 @@ def run(cfg: Config):
         num_sanity_val_steps=0,
     )
     classifier_trainer.fit(classifier, head_train_loader)
-    classifier_trainer.validate(classifier, dataloaders=val_loader)
+    val_results = classifier_trainer.validate(classifier, dataloaders=val_loader)
+    val_results = val_results[0] if val_results else {}
 
-    final_val_acc = classifier_trainer.callback_metrics.get("classifier_val_acc")
-    final_val_acc = float(final_val_acc.item()) if final_val_acc is not None else None
+    callback_metric = classifier_trainer.callback_metrics.get("classifier_val_acc")
+    final_val_acc = float(callback_metric.item()) if callback_metric is not None else None
+    if final_val_acc is None and "classifier_val_acc" in val_results:
+        final_val_acc = float(val_results["classifier_val_acc"])
 
     safe_run_name = cfg.run_name.replace(" ", "_")
     out_dir = os.path.join("saved_models", safe_run_name)
@@ -125,4 +153,11 @@ def run(cfg: Config):
     torch.save(asdict(cfg), os.path.join(out_dir, "local_supcon_hparams.pth"))
     torch.save(classifier.state_dict(), os.path.join(out_dir, "local_supcon_classifier.pth"))
 
+    if return_metrics:
+        metrics = {k: float(v) for k, v in val_results.items() if isinstance(v, (int, float))}
+        return {
+            "primary_metric_name": "classifier_val_acc",
+            "primary_metric": final_val_acc,
+            "validation_metrics": metrics,
+        }
     return final_val_acc

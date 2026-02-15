@@ -1,72 +1,166 @@
-import numpy as np
+import json
 import traceback
 from copy import deepcopy
-import logging
+from pathlib import Path
 
+import pandas as pd
+import torch
+
+from trl import run_backprop
+from trl import run_local_contrastive
 from trl import run_training
 from trl.config.configurations import *
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(filename="all_comparison_runs_out.log",  level=logging.INFO)
 
-def run_with_seeds(cfg, seed_start_at=42, num_runs=5):
+OUTPUT_DIR = Path("output") / "metrics"
+
+
+def apply_temporal_coherence(conf: Config, enabled: bool) -> Config:
+    conf.data_config.coherence = 1.0 if enabled else 0.0
+    return conf
+
+
+def base_cfg() -> Config:
+    cfg = Config()
+    cfg.store_config.device = "cuda" if torch.cuda.is_available() else "cpu"
+    cfg.logger = "csv"
+    return cfg
+
+
+def identity_cfg(conf: Config) -> Config:
+    return conf
+
+
+def write_rows_csv(path: Path, rows: list[dict]):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_csv(path, index=False)
+
+
+def run_with_seeds(
+    cfg: Config,
+    suite_name: str,
+    setup_name: str,
+    method_name: str,
+    temporal_coherence: bool,
+    runner=run_training.run,
+    seed_start_at: int = 42,
+    num_runs: int = 5,
+) -> list[dict]:
     finish_setup(cfg)
-    
-    accs = []
-    seeds = list(range(seed_start_at,seed_start_at+num_runs))
-
+    rows = []
+    seeds = list(range(seed_start_at, seed_start_at + num_runs))
     for seed in seeds:
         cfg_current = deepcopy(cfg)
         cfg_current.seed = seed
         try:
-            val_acc = run_training.run(cfg_current)
-            accs.append(val_acc)
-        except Exception as e:
-            print(f"Run with seed {seed} failed:")
-            traceback.print_exc()
+            metrics = runner(cfg_current, return_metrics=True)
+            val_metrics = metrics.get("validation_metrics", {})
+            row = {
+                "suite_name": suite_name,
+                "setup_name": setup_name,
+                "method_name": method_name,
+                "temporal_coherence": temporal_coherence,
+                "seed": seed,
+                "primary_metric_name": metrics.get("primary_metric_name"),
+                "primary_metric": metrics.get("primary_metric"),
+                "run_name": cfg_current.run_name,
+            }
+            row.update({f"val_{k}": v for k, v in val_metrics.items()})
+            rows.append(row)
+        except Exception:
+            rows.append({
+                "suite_name": suite_name,
+                "setup_name": setup_name,
+                "method_name": method_name,
+                "temporal_coherence": temporal_coherence,
+                "seed": seed,
+                "run_name": cfg_current.run_name,
+                "error": traceback.format_exc().strip(),
+            })
+    return rows
 
-    logger.info(f"Runs: {accs}")
-    logger.info(f"Average val acc over seeds: {np.mean(accs):.4f} ± {np.std(accs):.4f}, val error: {1 - np.mean(accs):.4f} ± {np.std(accs):.4f}")
-    logger.info("---")
-        
-def print_section(s):
-    logger.info("="*40)
-    logger.info(s)
+
+def run_full_suite(
+    suite_name: str,
+    method_name: str,
+    runner,
+    cfg_factory,
+    temporal_coherence: bool = True,
+) -> list[dict]:
+    setup_builders = [
+        ("512_256", lambda conf: conf),
+        ("512_256_aug_bn", aug_and_rbn_setup),
+        ("eqprop_scale", eqprop_scale_network),
+        ("ff_scale", ff_scale_network),
+    ]
+
+    suite_rows = []
+    for setup_name, setup_fn in setup_builders:
+        cfg = long_training(base_cfg())
+        cfg = cfg_factory(cfg)
+        cfg = apply_temporal_coherence(cfg, enabled=temporal_coherence)
+        cfg = setup_fn(cfg)
+        rows = run_with_seeds(
+            cfg=cfg,
+            suite_name=suite_name,
+            setup_name=setup_name,
+            method_name=method_name,
+            temporal_coherence=temporal_coherence,
+            runner=runner,
+        )
+        suite_rows.extend(rows)
+
+    write_rows_csv(OUTPUT_DIR / f"{suite_name}.csv", suite_rows)
+    return suite_rows
+
 
 if __name__ == "__main__":
-    def base_cfg():
-        cfg = Config()
-        cfg.store_config.device = "cpu"
-        return cfg
+    all_rows = []
 
-    # print_section("Test")
-    # cfg = base_cfg()
-    # cfg.encoders[0].layer_dims = ((28**2, 256),)
-    # cfg.epochs = 1
-    # cfg.head_epochs = 1
-    # run_with_seeds(cfg, num_runs=1)
+    all_rows.extend(run_full_suite(
+        suite_name="trl_setup",
+        method_name="trl",
+        runner=run_training.run,
+        cfg_factory=standard_setup,
+        temporal_coherence=True,
+    ))
+    all_rows.extend(run_full_suite(
+        suite_name="trls_setup",
+        method_name="trl",
+        runner=run_training.run,
+        cfg_factory=identity_cfg,
+        temporal_coherence=True,
+    ))
 
-    print_section("512->256 TRL")
-    run_with_seeds(standard_setup(long_training(base_cfg())))
+    all_rows.extend(run_full_suite(
+        suite_name="bp_coherence_on",
+        method_name="bp",
+        runner=run_backprop.run,
+        cfg_factory=identity_cfg,
+        temporal_coherence=True,
+    ))
+    all_rows.extend(run_full_suite(
+        suite_name="bp_coherence_off",
+        method_name="bp",
+        runner=run_backprop.run,
+        cfg_factory=identity_cfg,
+        temporal_coherence=False,
+    ))
 
-    print_section("\n512->256 TRL-S")
-    run_with_seeds(long_training(base_cfg()))
+    all_rows.extend(run_full_suite(
+        suite_name="local_supcon_coherence_on",
+        method_name="local_supcon",
+        runner=run_local_contrastive.run,
+        cfg_factory=identity_cfg,
+        temporal_coherence=True,
+    ))
+    all_rows.extend(run_full_suite(
+        suite_name="local_supcon_coherence_off",
+        method_name="local_supcon",
+        runner=run_local_contrastive.run,
+        cfg_factory=identity_cfg,
+        temporal_coherence=False,
+    ))
 
-    print_section("512->256 TRL AUG & BN")
-    run_with_seeds(aug_and_rbn_setup(standard_setup(long_training(base_cfg()))))
-    
-    print_section("\n512->256 TRL-S AUG & BN")
-    run_with_seeds(aug_and_rbn_setup(long_training(base_cfg())))
-
-    print_section("\nEqprop Scale TRL")
-    run_with_seeds(eqprop_scale_network(standard_setup(long_training(base_cfg()))))
-
-    print_section("\nEqProp Scale TRL-S")
-    run_with_seeds(eqprop_scale_network(long_training(base_cfg())))
-
-    print_section("\nFF Scale TRL")
-    run_with_seeds(ff_scale_network(standard_setup(long_training(base_cfg()))))
-
-    print_section("\nFF Scale TRL-S")
-    run_with_seeds(ff_scale_network(long_training(base_cfg())))
-
+    write_rows_csv(OUTPUT_DIR / "all_suites_concat.csv", all_rows)
+    (OUTPUT_DIR / "all_suites_concat.json").write_text(json.dumps(all_rows, indent=2), encoding="utf-8")

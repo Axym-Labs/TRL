@@ -8,4 +8,4 @@ saved_models
 data
 data/*
 experiments_mnist
-analysis_outputs/second_layer_activations
+output/

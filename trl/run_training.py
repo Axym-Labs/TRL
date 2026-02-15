@@ -15,10 +15,10 @@ from pytorch_lightning.loggers import WandbLogger, CSVLogger
 from trl.config.config import Config
 from trl.datasets.mnist import build_dataloaders
 from trl.trainer.head import ClassifierHead, RegressorHead, PredictorHead
-from trl.modules.encoder import TREncoder, TRSeqEncoder
+from trl.modules.encoder import TREncoder, TRSeqEncoder, TRSeqElementwiseEncoder
 from trl.trainer.encoder import EncoderTrainer, SeqEncoderTrainer
 
-def run(cfg: Config):
+def run(cfg: Config, return_metrics: bool = False):
     random.seed(cfg.seed)
     np.random.seed(cfg.seed)
     torch.manual_seed(cfg.seed)
@@ -43,9 +43,17 @@ def run(cfg: Config):
         pre_trainer = pl.Trainer(max_epochs=pretrain_epochs, accelerator="auto", devices=1,
                                 logger=trainer_logger, enable_checkpointing=False)
 
-        encoder_cls = TRSeqEncoder if cfg.problem_type == "sequence" else TREncoder
+        if cfg.problem_type == "sequence":
+            if cfg.sequence_recurrent_encoder:
+                encoder_cls = TRSeqEncoder
+                encoder_trainer_cls = SeqEncoderTrainer
+            else:
+                encoder_cls = TRSeqElementwiseEncoder
+                encoder_trainer_cls = EncoderTrainer
+        else:
+            encoder_cls = TREncoder
+            encoder_trainer_cls = EncoderTrainer
         encoder = encoder_cls(cfg, encoder_cfg)
-        encoder_trainer_cls = SeqEncoderTrainer if cfg.problem_type == "sequence" else EncoderTrainer
         encoder_trainer = encoder_trainer_cls(f"e{i}", cfg, encoder, pre_model=pre_model)
         pre_trainer.fit(encoder_trainer, train_loader)
         pre_model = encoder_trainer
@@ -64,11 +72,17 @@ def run(cfg: Config):
     classifier_trainer = pl.Trainer(max_epochs=cfg.head_epochs, accelerator="auto", devices=1,
                                     logger=trainer_logger, enable_checkpointing=False, num_sanity_val_steps=0)
     classifier_trainer.fit(classifier, head_train_loader)
-    classifier_trainer.validate(classifier, dataloaders=val_loader)
+    val_results = classifier_trainer.validate(classifier, dataloaders=val_loader)
+    val_results = val_results[0] if val_results else {}
 
-    final_val_acc = classifier_trainer.callback_metrics.get('classifier_val_acc').item()
-    if final_val_acc is not None and cfg.logger == "wandb":
-        trainer_logger.experiment.summary["final_val_accuracy"] = final_val_acc
+    val_metric_key = "classifier_val_acc" if cfg.head_task == "classification" else "val_prediction_loss"
+    callback_metric = classifier_trainer.callback_metrics.get(val_metric_key)
+    final_val_metric = float(callback_metric.item()) if callback_metric is not None else None
+    if final_val_metric is None and val_metric_key in val_results:
+        final_val_metric = float(val_results[val_metric_key])
+    if final_val_metric is not None and cfg.logger == "wandb":
+        summary_key = "final_val_accuracy" if cfg.head_task == "classification" else "final_val_prediction_loss"
+        trainer_logger.experiment.summary[summary_key] = final_val_metric
 
     # ---- SAVE MODELS TO the requested directory ----
     safe_run_name = cfg.run_name.replace(" ", "_")
@@ -87,4 +101,11 @@ def run(cfg: Config):
     print(f"Saved hparams -> {hparams_path}")
     print(f"Saved classifier -> {classifier_path}")
 
-    return final_val_acc
+    if return_metrics:
+        metrics = {k: float(v) for k, v in val_results.items() if isinstance(v, (int, float))}
+        return {
+            "primary_metric_name": val_metric_key,
+            "primary_metric": final_val_metric,
+            "validation_metrics": metrics,
+        }
+    return final_val_metric

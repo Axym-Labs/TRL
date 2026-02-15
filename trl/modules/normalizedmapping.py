@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 
 from trl.config.config import Config
-from trl.loss import TRLoss
+from trl.loss import TRLoss, TRSeqLoss
 from trl.store import MappingStore
 from trl.representation_metrics import RepresentationMetricsTracker
 
@@ -19,7 +19,8 @@ class NormalizedMapping(nn.Module):
         self.lat = nn.Linear(out_dim, out_dim, bias=False)
         
         rep_tracker = RepresentationMetricsTracker(out_dim, cfg.head_out_dim) if cfg.head_task == "classification" and cfg.track_representations else None
-        self.criterion = TRLoss(out_dim, cfg.trloss_config, rep_tracker, chunk_size=cfg.data_config.chunk_size)
+        loss_cls = TRSeqLoss if cfg.problem_type == "sequence" else TRLoss
+        self.criterion = loss_cls(out_dim, cfg.trloss_config, rep_tracker, chunk_size=cfg.data_config.chunk_size)
         self.store = MappingStore(cfg.store_config, out_dim, cfg.problem_type)
 
     def forward(self, x: torch.Tensor):

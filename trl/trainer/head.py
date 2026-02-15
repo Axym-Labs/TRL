@@ -5,6 +5,9 @@ from torch import nn as nn
 
 from trl.config.config import Config
 from trl.trainer.encoder import EncoderTrainer, SeqEncoderTrainer
+from trl.modules.temporal_fusion import build_temporal_fusion
+from trl.loss import TRSeqLoss
+from trl.store import MappingStore
 
 class ClassifierHead(pl.LightningModule):
     def __init__(self, encoder: EncoderTrainer, cfg: Config, out_dim: int = 10):
@@ -64,14 +67,52 @@ class PredictorHead(RegressorHead):
         assert cfg.data_config.batch_size >= 2
 
         super().__init__(encoder, cfg, out_dim, **kwargs)
+        # Sequence path uses the final encoder representation tensor.
+        # Gathered layer activations are not implemented for TRSeqEncoder.
+        self.rep_dim = self.encoder.encoder.rep_dim
+        self.mapping = nn.Linear(self.rep_dim, out_dim)
+        self.temporal_fusion = build_temporal_fusion(
+            mode=cfg.temporal_fusion_mode,
+            rep_dim=self.rep_dim,
+            alpha=cfg.temporal_fusion_alpha,
+            hidden_dim=cfg.temporal_fusion_hidden_dim,
+        )
+        self.temporal_fusion_trl_coeff = cfg.temporal_fusion_trl_coeff
+        self.fusion_criterion = None
+        self.fusion_lat = None
+        self.fusion_store = None
+        if self.temporal_fusion is not None and self.temporal_fusion_trl_coeff > 0.0:
+            self.fusion_criterion = TRSeqLoss(self.rep_dim, cfg.trloss_config, rep_tracker=None)
+            self.fusion_lat = nn.Linear(self.rep_dim, self.rep_dim, bias=False)
+            self.fusion_store = MappingStore(cfg.store_config, self.rep_dim, cfg.problem_type)
+
+    def _encode_and_fuse(self, x: torch.Tensor) -> torch.Tensor:
+        with torch.no_grad():
+            reps = self.encoder(x)
+        y_seq = reps.detach()
+        return self.temporal_fusion(y_seq) if self.temporal_fusion is not None else y_seq
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        h_seq = self._encode_and_fuse(x)
+        return self.mapping(h_seq)
 
     def training_step(self, batch, batch_idx):
         x_orig, _ = batch
         x = x_orig[:, :-1, :]
         y = x_orig[:, 1:, :]
-        out = self(x)
-        loss = self.criterion(out, y)
+        h_seq = self._encode_and_fuse(x)
+        out = self.mapping(h_seq)
+        pred_loss = self.criterion(out, y)
+        loss = pred_loss
+        if self.fusion_criterion is not None:
+            self.fusion_store.update_post(h_seq)
+            vicreg_loss, lateral_loss, _metrics = self.fusion_criterion(h_seq, lateral=self.fusion_lat, store=self.fusion_store)
+            self.fusion_store.update_last_z(h_seq)
+            fusion_trl_loss = vicreg_loss + lateral_loss
+            self.log("train_fusion_trl_loss", fusion_trl_loss, prog_bar=True)
+            loss = loss + self.temporal_fusion_trl_coeff * fusion_trl_loss
         self.log_metric(out, y, True)
+        self.log("train_total_loss", loss, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -80,5 +121,13 @@ class PredictorHead(RegressorHead):
         y = x_orig[:, 1:, :]
         out = self(x)
         self.log_metric(out, y, False)
+
+    def configure_optimizers(self):
+        params = list(self.mapping.parameters())
+        if self.temporal_fusion is not None:
+            params.extend(self.temporal_fusion.parameters())
+        if self.fusion_lat is not None:
+            params.extend(self.fusion_lat.parameters())
+        return torch.optim.Adam(params, lr=self.lr)
 
 

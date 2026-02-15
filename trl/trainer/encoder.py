@@ -21,13 +21,17 @@ class EncoderTrainer(pl.LightningModule):
 
     def forward(self, x: torch.Tensor, gather_layer_activations: list|None = None) -> torch.Tensor:
         if self.pre_model is not None:
-            x = self.pre_model(x)
+            with torch.no_grad():
+                x = self.pre_model(x)
+            x = x.detach()
         return self.encoder(x, gather_layer_activations=gather_layer_activations)
 
     def training_step(self, batch, batch_idx):
         inp, _labels = batch
         if self.pre_model is not None:
-            inp = self.pre_model(inp)
+            with torch.no_grad():
+                inp = self.pre_model(inp)
+            inp = inp.detach()
         prepared_inp = self.encoder.prepare_input(inp)
 
         optimizer = self.optimizers()
@@ -95,32 +99,33 @@ class SeqEncoderTrainer(EncoderTrainer):
         seq_len = x.size(1)
         device = x.device
 
-        optimizer = self.optimizers()
+        pass_buffers = [[] for _ in range(self.encoder.pass_layer_count)]
+        pass_to_unique = {}
 
         for t in range(seq_len):
-            cur_inp = torch.cat([x[:, t, :], hidden], dim=1)
-            total_loss_t = torch.tensor(0.0, device=device)
+            # No temporal backpropagation: hidden state is detached at every step.
+            cur_inp = torch.cat([x[:, t, :], hidden.detach()], dim=1)
             for pass_i, unique_i, layer in self.encoder.enumerate_pass_layers():
-                cur_inp, step_loss, lateral_loss, metrics = self._train_and_step_layer(cur_inp, unique_i)
-                total_loss_t = total_loss_t + step_loss + lateral_loss
-                self._log_layer_metrics(pass_i, step_loss, lateral_loss, metrics, prog_bar=True)
-
-            optimizer.zero_grad()
-            self.manual_backward(total_loss_t)
-            optimizer.step()
-
+                z = layer(cur_inp)
+                pass_buffers[pass_i].append(z)
+                pass_to_unique[pass_i] = unique_i
+                # No cross-layer backpropagation: next layer sees detached activations.
+                cur_inp = z.detach()
             hidden = cur_inp
 
-        return torch.tensor(0.0, device=device)
+        total_loss = torch.tensor(0.0, device=device)
+        for pass_i, z_list in enumerate(pass_buffers):
+            unique_i = pass_to_unique[pass_i]
+            layer = self.encoder.layers[unique_i]
+            z_seq = torch.stack(z_list, dim=1)
+            layer.store.update_post(z_seq)
+            step_loss, lateral_loss, metrics = layer.criterion(z_seq, lateral=layer.lat, store=layer.store)
+            layer.store.update_last_z(z_seq)
+            total_loss = total_loss + step_loss + lateral_loss
+            self._log_layer_metrics(pass_i, step_loss, lateral_loss, metrics, prog_bar=True)
+
+        return total_loss
 
     def training_step(self, batch, batch_idx):
-        if not self.train_concurrently:
-            return super().training_step(batch, batch_idx)
-
-        inp, _labels = batch
-        if self.pre_model is not None:
-            inp = self.pre_model(inp)
-        prepared_inp = self.encoder.prepare_input(inp)
-        self._training_step_concurrent(prepared_inp)
-        return None
+        return super().training_step(batch, batch_idx)
 

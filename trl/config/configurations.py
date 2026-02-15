@@ -65,9 +65,24 @@ def mnist_rnn_setup(conf: Config):
     conf.encoders = [
         EncoderConfig(((28+64, 128),(128,64)))
     ]
+    conf.data_config.dataset_name = "mnist-rows"
     conf.head_out_dim = 28
     conf.head_task = "regression"
     conf.problem_type = "sequence"
+    conf.sequence_recurrent_encoder = True
+
+
+@change_configuration
+def mnist_local_state_setup(conf: Config):
+    # Elementwise encoder: x_t -> y_t, no recurrent hidden state inside encoder.
+    conf.encoders = [
+        EncoderConfig(((28, 128), (128, 64)))
+    ]
+    conf.data_config.dataset_name = "mnist-rows"
+    conf.head_out_dim = 28
+    conf.head_task = "regression"
+    conf.problem_type = "sequence"
+    conf.sequence_recurrent_encoder = False
 
 @change_configuration
 def mnist_backprop_comparison_tuning(conf: Config):
@@ -91,7 +106,7 @@ def eqprop_scale_network(conf: Config):
 def standard_setup(conf: Config):
     conf.head_use_layers = True
     conf.train_encoder_concurrently = False
-    conf.trloss_config.sim_within_chunks = True
+    conf.trloss_config.use_chunk_paritions = True
     # use_cov_directly is not beneficial
     # counteracts doulble-z-term in MSE which favors collapse
     conf.trloss_config.detach_previous = False

@@ -35,7 +35,8 @@ class TRLossConfig:
 
     cov_matrix_sparsity: float = 0.0
     consider_last_batch_z: bool = False
-    sim_within_chunks: bool = False
+    # Keep naming as requested in current experiments.
+    use_chunk_paritions: bool = False
     use_cov_directly: bool = False
     detach_previous: bool = True
     use_trace_activation: bool = False
@@ -71,6 +72,7 @@ class StoreConfig:
 @dataclass
 class DataConfig:
     data_path: str = "./data"
+    dataset_name: str = "mnist"
     num_workers: int = 1
     pin_memory: bool = False
 
@@ -97,9 +99,20 @@ class Config:
     # pass -> a simple forward pass
     # sequence -> sequential setup
     problem_type: str = "pass"
+    # sequence encoder mode:
+    # True -> recurrent TRSeqEncoder (legacy),
+    # False -> elementwise per-timestep encoder (proposal setup).
+    sequence_recurrent_encoder: bool = True
     # classification or regression
     head_task: str = "classification"
     head_out_dim: int = 10
+    # Backprop sequence baseline: if False use MLP-style recurrent mapping, if True use linear recurrent mapping.
+    bp_sequence_linear: bool = False
+    # Sequence head temporal fusion: "none", "ema", "residual_gate", "concat_linear", or "concat_mlp".
+    temporal_fusion_mode: str = "none"
+    temporal_fusion_alpha: float = 0.5
+    temporal_fusion_hidden_dim: int = 0
+    temporal_fusion_trl_coeff: float = 1.0
 
     # different encoders are trained in sequence
     # within encoders, layers can be trained concurrently

@@ -1,0 +1,10 @@
+{
+  "head_val_acc": 0.9691,
+  "pairwise_same_mean_cos": 0.8015672564506531,
+  "pairwise_diff_mean_cos": 0.17755715548992157,
+  "pairwise_margin_cos": 0.6240100860595703,
+  "prototype_self_mean_cos": 1.0,
+  "prototype_nearest_other_mean_cos": 0.32885321974754333,
+  "mean_neuron_selectivity": 2.2395246028900146,
+  "top10pct_neuron_selectivity_mean": 2.789257287979126
+}

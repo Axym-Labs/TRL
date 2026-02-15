@@ -20,7 +20,7 @@ from trl.trainer.head import ClassifierHead
 
 def load_cfg(hparams_path: Path) -> Config:
     cfg = Config()
-    h = torch.load(hparams_path, map_location="cpu")
+    h = torch.load(hparams_path, map_location="cpu", weights_only=False)
 
     for key, val in h.items():
         if key == "encoders":
@@ -54,15 +54,91 @@ def newest_run_dir(base: Path) -> Path:
     return max(run_dirs, key=lambda p: p.stat().st_mtime)
 
 
+def setup_plot_style():
+    plt.style.use("seaborn-v0_8-white")
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.serif": ["CMU Serif", "Computer Modern Roman", "Times New Roman", "DejaVu Serif"],
+        "mathtext.fontset": "cm",
+        "font.size": 8,
+        "axes.labelsize": 8,
+        "xtick.labelsize": 7,
+        "ytick.labelsize": 7,
+        "legend.fontsize": 7,
+    })
+
+
 def pca_2d(x: np.ndarray) -> np.ndarray:
     x = x - x.mean(axis=0, keepdims=True)
     u, s, _ = np.linalg.svd(x, full_matrices=False)
     return u[:, :2] * s[:2]
 
 
+def lda_2d(x: np.ndarray, y: np.ndarray, num_classes: int) -> np.ndarray:
+    d = x.shape[1]
+    x_mean = x.mean(axis=0, keepdims=True)
+    sw = np.zeros((d, d), dtype=np.float64)
+    sb = np.zeros((d, d), dtype=np.float64)
+    for c in range(num_classes):
+        xc = x[y == c]
+        if xc.shape[0] < 2:
+            continue
+        mc = xc.mean(axis=0, keepdims=True)
+        centered = xc - mc
+        sw += centered.T @ centered
+        diff = mc - x_mean
+        sb += xc.shape[0] * (diff.T @ diff)
+
+    reg = 1e-4 * np.eye(d)
+    m = np.linalg.solve(sw + reg, sb)
+    eigvals, eigvecs = np.linalg.eig(m)
+    idx = np.argsort(np.real(eigvals))[::-1][:2]
+    w = np.real(eigvecs[:, idx])
+    return x @ w
+
+
 def cosine_normalize(x: np.ndarray, eps: float = 1e-8) -> np.ndarray:
     norms = np.linalg.norm(x, axis=1, keepdims=True)
     return x / np.maximum(norms, eps)
+
+
+def spectral_2d(x: np.ndarray, n_neighbors: int = 12) -> np.ndarray:
+    xn = cosine_normalize(x.astype(np.float64))
+    sim = xn @ xn.T
+    np.fill_diagonal(sim, -np.inf)
+    n = sim.shape[0]
+    n_neighbors = min(n_neighbors, n - 1)
+    knn_idx = np.argpartition(-sim, kth=n_neighbors, axis=1)[:, :n_neighbors]
+
+    w = np.zeros((n, n), dtype=np.float64)
+    rows = np.arange(n)[:, None]
+    nbr_sim = np.maximum(sim[rows, knn_idx], 0.0)
+    w[rows, knn_idx] = nbr_sim
+    w = np.maximum(w, w.T)
+
+    d = w.sum(axis=1)
+    d_inv_sqrt = 1.0 / np.sqrt(np.maximum(d, 1e-8))
+    l = np.eye(n) - (d_inv_sqrt[:, None] * w * d_inv_sqrt[None, :])
+    eigvals, eigvecs = np.linalg.eigh(l)
+    order = np.argsort(eigvals)
+    return eigvecs[:, order[1:3]]
+
+
+def tsne_2d(x: np.ndarray, random_state: int = 42) -> np.ndarray:
+    try:
+        from sklearn.manifold import TSNE
+    except Exception as exc:
+        raise RuntimeError("t-SNE requires scikit-learn. Install with `uv pip install scikit-learn`.") from exc
+
+    perplexity = max(5, min(30, (x.shape[0] - 1) // 3))
+    tsne = TSNE(
+        n_components=2,
+        perplexity=perplexity,
+        init="pca",
+        learning_rate="auto",
+        random_state=random_state,
+    )
+    return tsne.fit_transform(x)
 
 
 def pairwise_cosine_stats(reps: np.ndarray, labels: np.ndarray, sample_pairs: int = 30000) -> dict:
@@ -79,15 +155,61 @@ def pairwise_cosine_stats(reps: np.ndarray, labels: np.ndarray, sample_pairs: in
     }
 
 
+def scatter_latent(ax, z2d, labels, num_classes):
+    sc = ax.scatter(z2d[:, 0], z2d[:, 1], c=labels, s=5, cmap="tab10", alpha=0.75, linewidths=0)
+    ax.set_xlabel("Dim 1")
+    ax.set_ylabel("Dim 2")
+    ax.grid(False)
+    return sc
+
+
+def write_plot_descriptions(out_dir: Path):
+    md = """# Figure Descriptions
+
+## `pca_representations.png`
+Two-dimensional PCA projection of validation representations. Colors indicate digit classes, showing dominant global variance structure and coarse class alignment.
+
+## `lda_representations.png`
+Two-dimensional LDA projection using class labels. This view emphasizes class-discriminative structure and highlights linear separability in the learned latent space.
+
+## `spectral_representations.png`
+Laplacian-eigenmap (spectral) projection of latent vectors based on a cosine k-nearest-neighbor graph. This visualization emphasizes local manifold neighborhoods and nonlinear cluster geometry.
+
+## `tsne_representations.png`
+Two-dimensional t-SNE projection of latent representations. This view emphasizes neighborhood-preserving nonlinear class structure and local cluster compactness.
+
+## `first_layer_top64_rf.png`
+Top-64 first-layer receptive fields selected by weight L2 norm. Robust nonlinear contrast scaling is used to improve visibility of localized and oriented patterns.
+
+## `top_selective_neurons_heatmap.png`
+Class-conditional mean activations for the most selective neurons in the representation. Columns are neurons sorted by selectivity; rows are classes.
+
+## `confusion_matrix_normalized.png`
+Row-normalized confusion matrix of linear-head predictions on validation data. Diagonal intensity reflects per-class recall.
+
+## `class_prototype_cosine.png`
+Cosine similarity matrix of class prototype vectors (class-mean latent embeddings). Off-diagonal values indicate inter-class representational overlap.
+
+## `pairwise_cosine_distribution.png`
+Distribution of pairwise cosine similarities for same-class versus different-class sample pairs. The separation margin summarizes latent compactness and class separation.
+
+## `representation_metrics.json`
+Scalar summary metrics used for quantitative reporting: head validation accuracy, pairwise cosine margins, prototype overlap, and neuron selectivity statistics.
+"""
+    (out_dir / "plot_descriptions.md").write_text(md, encoding="utf-8")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--run_dir", type=str, default="")
     parser.add_argument("--max_points", type=int, default=5000)
+    parser.add_argument("--max_points_spectral", type=int, default=2000)
+    parser.add_argument("--out_root", type=str, default="output/analysis")
     args = parser.parse_args()
 
     save_root = Path("saved_models")
     run_dir = Path(args.run_dir) if args.run_dir else newest_run_dir(save_root)
-    out_dir = Path("analysis_outputs") / run_dir.name
+    out_dir = Path(args.out_root) / run_dir.name
     out_dir.mkdir(parents=True, exist_ok=True)
 
     cfg = load_cfg(run_dir / "vicreg_hparams.pth")
@@ -137,30 +259,59 @@ def main():
         reps_plot = reps
         labels_plot = labels
 
-    plt.style.use("seaborn-v0_8-whitegrid")
+    setup_plot_style()
 
     fig, ax = plt.subplots(figsize=(8, 6))
     p2 = pca_2d(reps_plot)
-    scatter = ax.scatter(p2[:, 0], p2[:, 1], c=labels_plot, s=6, cmap="tab10", alpha=0.7)
-    ax.set_title("Representation PCA (Validation)")
-    ax.set_xlabel("PC1")
-    ax.set_ylabel("PC2")
-    fig.colorbar(scatter, ax=ax, ticks=range(cfg.head_out_dim), label="Class")
+    sc = scatter_latent(ax, p2, labels_plot, cfg.head_out_dim)
+    fig.colorbar(sc, ax=ax, ticks=range(cfg.head_out_dim), label="Class")
     fig.tight_layout()
     fig.savefig(out_dir / "pca_representations.png", dpi=240)
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    lda2 = lda_2d(reps_plot, labels_plot, cfg.head_out_dim)
+    sc = scatter_latent(ax, lda2, labels_plot, cfg.head_out_dim)
+    fig.colorbar(sc, ax=ax, ticks=range(cfg.head_out_dim), label="Class")
+    fig.tight_layout()
+    fig.savefig(out_dir / "lda_representations.png", dpi=240)
+    plt.close(fig)
+
+    if reps_plot.shape[0] > args.max_points_spectral:
+        sidx = np.random.default_rng(7).choice(reps_plot.shape[0], size=args.max_points_spectral, replace=False)
+        reps_spec = reps_plot[sidx]
+        labels_spec = labels_plot[sidx]
+    else:
+        reps_spec = reps_plot
+        labels_spec = labels_plot
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    spec2 = spectral_2d(reps_spec, n_neighbors=12)
+    sc = scatter_latent(ax, spec2, labels_spec, cfg.head_out_dim)
+    fig.colorbar(sc, ax=ax, ticks=range(cfg.head_out_dim), label="Class")
+    fig.tight_layout()
+    fig.savefig(out_dir / "spectral_representations.png", dpi=240)
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    tsne2 = tsne_2d(reps_spec, random_state=42)
+    sc = scatter_latent(ax, tsne2, labels_spec, cfg.head_out_dim)
+    fig.colorbar(sc, ax=ax, ticks=range(cfg.head_out_dim), label="Class")
+    fig.tight_layout()
+    fig.savefig(out_dir / "tsne_representations.png", dpi=240)
     plt.close(fig)
 
     first_w = encoder_trainer.encoder.layers[0].lin.weight.detach().cpu().numpy()
     l2 = np.linalg.norm(first_w, axis=1)
     top_idx = np.argsort(l2)[-64:][::-1]
     fig, axes = plt.subplots(8, 8, figsize=(10, 10))
-    fig.suptitle("Top-64 First-Layer Receptive Fields (by L2 norm)")
+    robust = np.percentile(np.abs(first_w[top_idx]), 96) + 1e-8
     for i, ax in enumerate(axes.flat):
         w = first_w[top_idx[i]].reshape(28, 28)
-        vmax = np.max(np.abs(w)) + 1e-8
-        ax.imshow(w, cmap="coolwarm", vmin=-vmax, vmax=vmax)
+        w_scaled = np.tanh(2.5 * w / robust)
+        ax.imshow(w_scaled, cmap="coolwarm", vmin=-1.0, vmax=1.0)
         ax.axis("off")
-    fig.tight_layout(rect=(0, 0, 1, 0.98))
+    fig.tight_layout()
     fig.savefig(out_dir / "first_layer_top64_rf.png", dpi=240)
     plt.close(fig)
 
@@ -169,10 +320,10 @@ def main():
     top_sel = np.argsort(selectivity)[-48:][::-1]
     fig, ax = plt.subplots(figsize=(12, 5))
     im = ax.imshow(class_means[:, top_sel], aspect="auto", cmap="viridis")
-    ax.set_title("Class-Conditional Means of Top-Selective Neurons")
     ax.set_xlabel("Neuron (sorted by selectivity)")
     ax.set_ylabel("Class")
     ax.set_yticks(range(cfg.head_out_dim))
+    ax.grid(False)
     fig.colorbar(im, ax=ax, label="Mean activation")
     fig.tight_layout()
     fig.savefig(out_dir / "top_selective_neurons_heatmap.png", dpi=240)
@@ -184,11 +335,11 @@ def main():
     conf_norm = conf / np.maximum(conf.sum(axis=1, keepdims=True), 1.0)
     fig, ax = plt.subplots(figsize=(6, 5))
     im = ax.imshow(conf_norm, cmap="magma", vmin=0.0, vmax=1.0)
-    ax.set_title("Normalized Confusion Matrix (Head)")
     ax.set_xlabel("Predicted class")
     ax.set_ylabel("True class")
     ax.set_xticks(range(cfg.head_out_dim))
     ax.set_yticks(range(cfg.head_out_dim))
+    ax.grid(False)
     fig.colorbar(im, ax=ax, label="Row-normalized probability")
     fig.tight_layout()
     fig.savefig(out_dir / "confusion_matrix_normalized.png", dpi=240)
@@ -198,11 +349,11 @@ def main():
     proto_cos = proto @ proto.T
     fig, ax = plt.subplots(figsize=(6, 5))
     im = ax.imshow(proto_cos, cmap="coolwarm", vmin=-1.0, vmax=1.0)
-    ax.set_title("Class Prototype Cosine Similarity")
     ax.set_xlabel("Class")
     ax.set_ylabel("Class")
     ax.set_xticks(range(cfg.head_out_dim))
     ax.set_yticks(range(cfg.head_out_dim))
+    ax.grid(False)
     fig.colorbar(im, ax=ax, label="Cosine similarity")
     fig.tight_layout()
     fig.savefig(out_dir / "class_prototype_cosine.png", dpi=240)
@@ -213,9 +364,9 @@ def main():
     bins = np.linspace(-1.0, 1.0, 80)
     ax.hist(cos_stats["different"], bins=bins, alpha=0.65, density=True, label="different class")
     ax.hist(cos_stats["same"], bins=bins, alpha=0.65, density=True, label="same class")
-    ax.set_title("Pairwise Cosine Similarity Distribution")
     ax.set_xlabel("Cosine similarity")
     ax.set_ylabel("Density")
+    ax.grid(False)
     ax.legend()
     fig.tight_layout()
     fig.savefig(out_dir / "pairwise_cosine_distribution.png", dpi=240)
@@ -233,11 +384,12 @@ def main():
         "prototype_self_mean_cos": float(np.mean(np.diag(proto_cos))),
         "prototype_nearest_other_mean_cos": nearest_other_mean,
         "mean_neuron_selectivity": float(selectivity.mean()),
-        "top10pct_neuron_selectivity_mean": float(np.mean(np.sort(selectivity)[-max(1, len(selectivity)//10):])),
+        "top10pct_neuron_selectivity_mean": float(np.mean(np.sort(selectivity)[-max(1, len(selectivity) // 10):])),
     }
     with (out_dir / "representation_metrics.json").open("w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2)
 
+    write_plot_descriptions(out_dir)
     np.save(out_dir / "reps_val.npy", reps)
     np.save(out_dir / "labels_val.npy", labels)
     np.save(out_dir / "images_val.npy", imgs)

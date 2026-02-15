@@ -97,7 +97,9 @@ class TRSeqEncoder(TREncoder):
         B, S, D = x.shape
 
         if layer_idx == 0:
-            layer_latent_dim = D
+            # For the sequence encoder the first layer sees [x_t, hidden],
+            # not just x_t.
+            layer_latent_dim = self.enc_cfg.layer_dims[0][0]
         else:
             layer_unique_i = (layer_idx-1) % len(self.layers)
             layer_latent_dim = self.enc_cfg.layer_dims[layer_unique_i][1]
@@ -117,4 +119,14 @@ class TRSeqEncoder(TREncoder):
                 hidden = cur
 
         return act
+
+
+class TRSeqElementwiseEncoder(TREncoder):
+    """
+    Sequence encoder without recurrent hidden state:
+    applies the same feedforward mapping to each timestep independently.
+    """
+    def __init__(self, cfg: Config, encoder_cfg: EncoderConfig):
+        super().__init__(cfg, encoder_cfg)
+        self.flatten = nn.Flatten(start_dim=2)
         
