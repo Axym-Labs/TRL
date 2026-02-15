@@ -76,6 +76,9 @@ class StoreConfig:
 class DataConfig:
     data_path: str = "./data"
     dataset_name: str = "mnist"
+    # If True, try to download torchvision datasets when missing.
+    # If False, require datasets to already exist under data_path.
+    allow_download: bool = True
     num_workers: int = 1
     pin_memory: bool = False
 

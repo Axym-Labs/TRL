@@ -1,5 +1,9 @@
 from dataclasses import dataclass
 from typing import Callable
+from pathlib import Path
+from urllib.error import URLError
+import wave
+import numpy as np
 
 import torch
 import torchvision
@@ -112,6 +116,134 @@ class TimitSequenceDataset(Dataset):
         return self._to_sequence(wav), label
 
 
+class YesNoSequenceDataset(Dataset):
+    """
+    Wrap YESNO waveforms into fixed [S, D] sequences.
+    Label is the 8-bit yes/no pattern collapsed to an integer in [0, 255].
+    """
+    def __init__(self, base_ds, frame_len: int = 256, frame_hop: int = 128, max_frames: int = 64):
+        self.base_ds = base_ds
+        self.frame_len = frame_len
+        self.frame_hop = frame_hop
+        self.max_frames = max_frames
+
+    def __len__(self):
+        return len(self.base_ds)
+
+    def _to_sequence(self, wav: torch.Tensor):
+        if wav.ndim == 2:
+            wav = wav.mean(dim=0)
+        elif wav.ndim != 1:
+            wav = wav.reshape(-1)
+        need = self.frame_len + self.frame_hop * max(0, self.max_frames - 1)
+        if wav.numel() < need:
+            wav = torch.nn.functional.pad(wav, (0, need - wav.numel()))
+        frames = wav.unfold(0, self.frame_len, self.frame_hop)
+        frames = frames[: self.max_frames].contiguous()
+        if frames.shape[0] < self.max_frames:
+            pad = torch.zeros((self.max_frames - frames.shape[0], self.frame_len), dtype=frames.dtype)
+            frames = torch.cat([frames, pad], dim=0)
+        return frames
+
+    @staticmethod
+    def _labels_to_int(labels):
+        # YESNO emits an iterable of 8 binary labels.
+        bits = [int(b) for b in labels]
+        v = 0
+        for b in bits:
+            v = (v << 1) | (b & 1)
+        return v
+
+    def __getitem__(self, idx):
+        wav, _sr, labels = self.base_ds[idx]
+        return self._to_sequence(wav), self._labels_to_int(labels)
+
+
+class SpeechCommandsSequenceDataset(Dataset):
+    """
+    Wrap SpeechCommands waveforms into fixed [S, D] sequences.
+    Label is the command class index.
+    """
+    def __init__(self, base_ds, frame_len: int = 256, frame_hop: int = 128, max_frames: int = 64):
+        self.base_ds = base_ds
+        self.frame_len = frame_len
+        self.frame_hop = frame_hop
+        self.max_frames = max_frames
+        self._label_to_idx = {}
+
+    def __len__(self):
+        return len(self.base_ds)
+
+    def _to_sequence(self, wav: torch.Tensor):
+        if wav.ndim == 2:
+            wav = wav.mean(dim=0)
+        elif wav.ndim != 1:
+            wav = wav.reshape(-1)
+        need = self.frame_len + self.frame_hop * max(0, self.max_frames - 1)
+        if wav.numel() < need:
+            wav = torch.nn.functional.pad(wav, (0, need - wav.numel()))
+        frames = wav.unfold(0, self.frame_len, self.frame_hop)
+        frames = frames[: self.max_frames].contiguous()
+        if frames.shape[0] < self.max_frames:
+            pad = torch.zeros((self.max_frames - frames.shape[0], self.frame_len), dtype=frames.dtype)
+            frames = torch.cat([frames, pad], dim=0)
+        return frames
+
+    def _label_index(self, label: str):
+        key = str(label)
+        if key not in self._label_to_idx:
+            self._label_to_idx[key] = len(self._label_to_idx)
+        return self._label_to_idx[key]
+
+    def __getitem__(self, idx):
+        wav, _sr, label, *_ = self.base_ds[idx]
+        return self._to_sequence(wav), self._label_index(label)
+
+
+class LocalYesNoDataset(Dataset):
+    """
+    Local YESNO loader that parses .wav files directly from disk and avoids
+    torchaudio's runtime codec dependencies.
+    """
+    def __init__(self, root: Path):
+        self.root = Path(root)
+        self.files = sorted(self.root.glob("*.wav"))
+        if not self.files:
+            raise FileNotFoundError(f"No .wav files found under {self.root}")
+
+    def __len__(self):
+        return len(self.files)
+
+    @staticmethod
+    def _read_wav(path: Path) -> torch.Tensor:
+        with wave.open(str(path), "rb") as wf:
+            n_channels = wf.getnchannels()
+            sample_width = wf.getsampwidth()
+            n_frames = wf.getnframes()
+            raw = wf.readframes(n_frames)
+        if sample_width != 2:
+            raise ValueError(f"Unsupported sample width {sample_width} in {path}; expected 16-bit PCM.")
+        audio = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+        if n_channels > 1:
+            audio = audio.reshape(-1, n_channels).mean(axis=1)
+        return torch.from_numpy(audio)
+
+    @staticmethod
+    def _labels_from_name(path: Path):
+        # Filename pattern: "0_1_..._1.wav" (8 binary digits)
+        parts = path.stem.split("_")
+        if len(parts) != 8 or any(p not in {"0", "1"} for p in parts):
+            raise ValueError(f"Invalid YESNO filename pattern: {path.name}")
+        return [int(p) for p in parts]
+
+    def __getitem__(self, idx):
+        p = self.files[idx]
+        wav = self._read_wav(p)
+        labels = self._labels_from_name(p)
+        # match torchaudio YESNO tuple style: (waveform, sample_rate, labels)
+        return wav, 8000, labels
+
+
 def _get_labels(ds):
     if hasattr(ds, "targets"):
         t = ds.targets
@@ -157,9 +289,26 @@ def _build_torchvision_loaders(cfg: DataConfig, problem_type: str, spec: Dataset
     train_tf = if_seq_squeeze(spec.train_transform_fn(cfg.encoder_augment))
     val_tf = if_seq_squeeze(spec.val_transform_fn())
 
-    base_train = spec.train_dataset_fn(cfg.data_path, train=True, download=True, transform=train_tf)
-    head_base_train = spec.train_dataset_fn(cfg.data_path, train=True, download=True, transform=val_tf)
-    val_ds = spec.val_dataset_fn(cfg.data_path, train=False, download=True, transform=val_tf)
+    def _instantiate(ds_fn, train: bool, transform):
+        if not cfg.allow_download:
+            return ds_fn(cfg.data_path, train=train, download=False, transform=transform)
+        try:
+            return ds_fn(cfg.data_path, train=train, download=True, transform=transform)
+        except (URLError, RuntimeError, OSError) as exc:
+            # Retry in offline mode for users with manually prepared local datasets.
+            try:
+                return ds_fn(cfg.data_path, train=train, download=False, transform=transform)
+            except Exception:
+                name = cfg.dataset_name.lower()
+                raise RuntimeError(
+                    f"Could not download '{name}' and no local copy was found under '{cfg.data_path}'. "
+                    f"Set data_config.allow_download=False if you want strict offline behavior and place the "
+                    f"dataset files manually in torchvision's expected folder structure."
+                ) from exc
+
+    base_train = _instantiate(spec.train_dataset_fn, train=True, transform=train_tf)
+    head_base_train = _instantiate(spec.train_dataset_fn, train=True, transform=val_tf)
+    val_ds = _instantiate(spec.val_dataset_fn, train=False, transform=val_tf)
 
     train_loader = _make_train_loader(base_train, cfg)
     head_train_loader = _make_train_loader(head_base_train, cfg)
@@ -171,16 +320,117 @@ def _build_timit_loaders(cfg: DataConfig, problem_type: str):
     if problem_type != "sequence":
         raise ValueError("dataset_name='timit' currently supports problem_type='sequence' only.")
     try:
-        from torchaudio.datasets import TIMIT
+        import torchaudio
     except ImportError as exc:
         raise ImportError("dataset_name='timit' requires torchaudio to be installed.") from exc
 
-    # TIMIT usually requires a locally available corpus in cfg.data_path.
-    train_base = TIMIT(cfg.data_path, subset="train", download=False)
-    val_base = TIMIT(cfg.data_path, subset="test", download=False)
+    # Recent torchaudio releases do not provide a TIMIT downloader/reader class.
+    # We therefore support local-corpus loading from:
+    #   <data_path>/timit/train/**/*.wav
+    #   <data_path>/timit/test/**/*.wav
+    root = Path(cfg.data_path) / "timit"
+    train_root = root / "train"
+    test_root = root / "test"
+    if not train_root.exists() or not test_root.exists():
+        raise FileNotFoundError(
+            "dataset_name='timit' expects a local corpus at "
+            f"'{train_root}' and '{test_root}'. "
+            "TIMIT is typically licensed and not auto-downloadable."
+        )
 
+    class LocalTimitDataset(Dataset):
+        def __init__(self, subset_root: Path):
+            self.files = sorted(subset_root.rglob("*.wav"))
+            if not self.files:
+                raise FileNotFoundError(f"No .wav files found under {subset_root}")
+            self.speaker_to_idx = {}
+
+        def __len__(self):
+            return len(self.files)
+
+        def _speaker_index(self, wav_path: Path):
+            # Heuristic: use parent directory as speaker id.
+            speaker = wav_path.parent.name
+            if speaker not in self.speaker_to_idx:
+                self.speaker_to_idx[speaker] = len(self.speaker_to_idx)
+            return self.speaker_to_idx[speaker]
+
+        def __getitem__(self, idx):
+            wav_path = self.files[idx]
+            wav, _sr = torchaudio.load(str(wav_path))
+            label = self._speaker_index(wav_path)
+            return wav, label
+
+    train_base = LocalTimitDataset(train_root)
+    val_base = LocalTimitDataset(test_root)
     train_ds = TimitSequenceDataset(train_base)
     val_ds = TimitSequenceDataset(val_base)
+    train_loader = _make_train_loader(train_ds, cfg)
+    head_train_loader = _make_train_loader(train_ds, cfg)
+    val_loader = _make_val_loader(val_ds, cfg)
+    return train_loader, head_train_loader, val_loader
+
+
+def _build_yesno_loaders(cfg: DataConfig, problem_type: str):
+    if problem_type != "sequence":
+        raise ValueError("dataset_name='yesno' currently supports problem_type='sequence' only.")
+    root = Path(cfg.data_path) / "yesno"
+    waves_root = root / "waves_yesno"
+    if not waves_root.exists():
+        # Optional: try a one-off download path via torchaudio, then proceed local.
+        if cfg.allow_download:
+            try:
+                from torchaudio.datasets import YESNO
+                _ = YESNO(str(root), download=True)
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Could not download/load YESNO under '{root}'. "
+                    "If you are offline, place YESNO files locally and set data_config.allow_download=False."
+                ) from exc
+        if not waves_root.exists():
+            raise FileNotFoundError(f"Missing YESNO folder: {waves_root}")
+
+    base_ds = LocalYesNoDataset(waves_root)
+
+    # Single corpus split; use deterministic split for quick experiments.
+    n = len(base_ds)
+    if n < 10:
+        raise RuntimeError(f"YESNO dataset too small/unavailable (n={n}).")
+    val_n = max(8, int(0.2 * n))
+    train_n = n - val_n
+    train_base, val_base = torch.utils.data.random_split(
+        base_ds,
+        lengths=[train_n, val_n],
+        generator=torch.Generator().manual_seed(42),
+    )
+    train_ds = YesNoSequenceDataset(train_base)
+    val_ds = YesNoSequenceDataset(val_base)
+    train_loader = _make_train_loader(train_ds, cfg)
+    head_train_loader = _make_train_loader(train_ds, cfg)
+    val_loader = _make_val_loader(val_ds, cfg)
+    return train_loader, head_train_loader, val_loader
+
+
+def _build_speechcommands_loaders(cfg: DataConfig, problem_type: str):
+    if problem_type != "sequence":
+        raise ValueError("dataset_name='speechcommands' currently supports problem_type='sequence' only.")
+    try:
+        from torchaudio.datasets import SPEECHCOMMANDS
+    except ImportError as exc:
+        raise ImportError("dataset_name='speechcommands' requires torchaudio to be installed.") from exc
+
+    root = Path(cfg.data_path) / "speechcommands"
+    try:
+        train_base = SPEECHCOMMANDS(str(root), subset="training", download=cfg.allow_download)
+        val_base = SPEECHCOMMANDS(str(root), subset="validation", download=cfg.allow_download)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Could not load SpeechCommands under '{root}'. "
+            "If you are offline, place files locally and set data_config.allow_download=False."
+        ) from exc
+
+    train_ds = SpeechCommandsSequenceDataset(train_base)
+    val_ds = SpeechCommandsSequenceDataset(val_base)
     train_loader = _make_train_loader(train_ds, cfg)
     head_train_loader = _make_train_loader(train_ds, cfg)
     val_loader = _make_val_loader(val_ds, cfg)
@@ -227,5 +477,9 @@ def build_dataloaders(cfg: DataConfig, problem_type: str):
         return _build_torchvision_loaders(cfg, problem_type, spec)
     if name == "timit":
         return _build_timit_loaders(cfg, problem_type)
+    if name == "yesno":
+        return _build_yesno_loaders(cfg, problem_type)
+    if name == "speechcommands":
+        return _build_speechcommands_loaders(cfg, problem_type)
     raise ValueError(f"Unknown dataset_name='{cfg.dataset_name}'.")
 
