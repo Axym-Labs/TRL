@@ -38,6 +38,10 @@ class TRLossConfig:
     sim_within_chunks: bool = False
     use_cov_directly: bool = False
     detach_previous: bool = True
+    use_trace_activation: bool = False
+    trace_decay: float = 0.9
+    lateral_shift: bool = False
+    lateral_shift_cov_target: bool = False
 
     variance_hinge_fn = lambda self, x: F.relu(x)
     sim_loss_fn = lambda self, a, b: (a-b)**2
@@ -58,6 +62,7 @@ class StoreConfig:
     post_stats_momentum: float = 0
     cov_momentum: float = 0
     last_z_momentum: float = 0.0
+    trace_momentum: float = 0.9
     overwrite_at_start: bool = False
     batchless_updates: bool = False 
 

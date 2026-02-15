@@ -71,7 +71,8 @@ def run(cfg: Config):
         trainer_logger.experiment.summary["final_val_accuracy"] = final_val_acc
 
     # ---- SAVE MODELS TO the requested directory ----
-    out_dir = "saved_models/vicreg_9_covar_coarse"
+    safe_run_name = cfg.run_name.replace(" ", "_")
+    out_dir = os.path.join("saved_models", safe_run_name)
     os.makedirs(out_dir, exist_ok=True)
 
     encoder_path = os.path.join(out_dir, "vicreg_encoder.pth")

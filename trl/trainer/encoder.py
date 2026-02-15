@@ -71,7 +71,7 @@ class EncoderTrainer(pl.LightningModule):
             layer_params, lat_params = layer.layer_lat_params()
             all_params.extend(layer_params)
             all_params.extend(lat_params)
-            return self.optim_cls(all_params, lr=self.lr)
+        return self.optim_cls(all_params, lr=self.lr)
 
     def on_train_epoch_end(self):
         for i, layer in  self.encoder.enumerate_unique_layers():

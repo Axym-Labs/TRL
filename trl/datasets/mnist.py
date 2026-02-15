@@ -48,7 +48,7 @@ def build_dataloaders(cfg: DataConfig, problem_type: str):
         num_workers=cfg.num_workers, 
         pin_memory=cfg.pin_memory, 
         drop_last=True,
-        persistent_workers=True
+        persistent_workers=cfg.num_workers > 0
     )
     train_loader = DataLoader(base_train, **train_loader_kwargs)
     head_train_loader = DataLoader(head_base_train, **train_loader_kwargs)

@@ -31,8 +31,7 @@ class NormalizedMapping(nn.Module):
         return self.act_fn(out)
     
     def training_pass(self, x: torch.Tensor):
-        z_pre = self.forward(x)
-        z = self.act_fn(z_pre)
+        z = self.forward(x)
         self.store.update_post(z)
         losses_metrics = self.criterion(z, lateral=self.lat, store=self.store)
         self.store.update_last_z(z)

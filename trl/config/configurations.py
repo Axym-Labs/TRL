@@ -97,6 +97,24 @@ def standard_setup(conf: Config):
     conf.trloss_config.detach_previous = False
     conf.trloss_config.std_coeff *= 2 # because detach_previous=False
 
+@change_configuration
+def last_layer_head(conf: Config):
+    conf.head_use_layers = False
+
+@change_configuration
+def enable_trace(conf: Config, decay: float = 0.9):
+    conf.trloss_config.use_trace_activation = True
+    conf.trloss_config.trace_decay = decay
+    conf.store_config.trace_momentum = decay
+
+@change_configuration
+def enable_lateral_shift(conf: Config):
+    conf.trloss_config.lateral_shift = True
+
+@change_configuration
+def enable_lateral_shift_cov_target(conf: Config):
+    conf.trloss_config.lateral_shift_cov_target = True
+
 
 @change_configuration
 def aug_and_rbn_setup(conf: Config):

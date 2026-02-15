@@ -1,5 +1,6 @@
 .env
 .venv
+.uv-cache
 lightning_logs
 wandb
 __pycache__/

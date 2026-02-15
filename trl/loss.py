@@ -24,21 +24,29 @@ class TRLoss(nn.Module):
 
     def forward(self, z: torch.Tensor, lateral: nn.Module, store: MappingStore):
         z_centered = z - store.mu.value
+        if self.cfg.use_trace_activation and z_centered.ndim != 2:
+            raise NotImplementedError("Trace activation is currently implemented for 2D activations only.")
+        z_features = self.apply_trace(z_centered, store) if self.cfg.use_trace_activation else z_centered
 
-        sim_loss_pn = self.sim_loss(store.last_z.value, z_centered)
-        std_loss_pn = self.std_loss(store.var.value, z_centered)
-        cov_loss_pn  = self.cov_loss(z_centered, lateral)
-        lateral_loss_pn = self.lat_loss(store.cov.value, lateral)
+        sim_loss_pn = self.sim_loss(store.trace_z.value if self.cfg.use_trace_activation else store.last_z.value, z_features)
+        std_loss_pn = self.std_loss(store.var.value, z_features)
+        lat_in_for_cov = self.prepare_lat_in_for_cov(z_features, store)
+        cov_loss_pn  = self.cov_loss(z_features, lateral, store, lat_in=lat_in_for_cov)
+        cov_target = self.cov_target(store.cov.value, z_features, lat_in_for_cov)
+        lateral_loss_pn = self.lat_loss(cov_target, lateral)
 
         sim_loss = sim_loss_pn.mean(dim=0).sum()
         std_loss = std_loss_pn.mean(dim=0).sum()
-        cov_loss = cov_loss_pn.mean(dim=0).sum()
+        cov_loss = cov_loss_pn if cov_loss_pn.ndim == 0 else cov_loss_pn.mean(dim=0).sum()
         lat_loss = lateral_loss_pn.mean(dim=0).sum()
 
         vicreg_loss = self.cfg.sim_coeff * sim_loss + self.cfg.std_coeff * std_loss + self.cfg.cov_coeff * cov_loss
         lateral_loss = self.cfg.lat_coeff * lat_loss
 
-        self.rep_tracker.update(z)
+        if self.cfg.use_trace_activation:
+            store.trace_z.value = z_features[-1].detach()
+        store.last_centered_z.value = z_features[-1].detach()
+        self.rep_tracker.update(z_features)
 
         metrics = {
             'sim_loss': sim_loss.detach(),
@@ -72,13 +80,70 @@ class TRLoss(nn.Module):
             cur = z_centered[1:]
             return self.cfg.sim_loss_fn(cur, prev)
 
+    def apply_trace(self, z_centered, store: MappingStore):
+        decay = self.cfg.trace_decay
+        if decay < 0.0 or decay > 1.0:
+            raise ValueError(f"trace_decay must be in [0, 1], got {decay}")
+
+        if self.cfg.sim_within_chunks:
+            B, D = z_centered.shape
+            zc = z_centered.view(B // self.chunk_size, self.chunk_size, D)
+            if self.chunk_size <= 1:
+                return z_centered
+
+            x0 = zc[:, 0, :]
+            x_rest = zc[:, 1:, :]
+            x_rest_det = x_rest.detach()
+            S1 = self.chunk_size - 1
+            W = self.ema_kernel(S1, decay, z_centered.device, z_centered.dtype)
+            ema_rest_det = (1.0 - decay) * torch.einsum("tk,ckd->ctd", W, x_rest_det)
+            powers = (decay ** torch.arange(1, self.chunk_size, device=z_centered.device, dtype=z_centered.dtype)).view(1, S1, 1)
+            ema_rest_det = ema_rest_det + powers * x0.detach().unsqueeze(1)
+            # Keep only local gradient wrt current sample, detach temporal path.
+            ema_rest = ema_rest_det + (1.0 - decay) * (x_rest - x_rest_det)
+
+            trace = torch.empty_like(zc)
+            trace[:, 0, :] = x0
+            trace[:, 1:, :] = ema_rest
+            return trace.view(B, D)
+
+        B, D = z_centered.shape
+        W = self.ema_kernel(B, decay, z_centered.device, z_centered.dtype)
+        x_det = z_centered.detach()
+        prev = store.trace_z.value.detach().view(1, D)
+        ema_det = (1.0 - decay) * (W @ x_det)
+        powers = (decay ** torch.arange(1, B + 1, device=z_centered.device, dtype=z_centered.dtype)).view(B, 1)
+        ema_det = ema_det + powers * prev
+        # Keep only local gradient wrt current sample, detach temporal path.
+        return ema_det + (1.0 - decay) * (z_centered - x_det)
+
+    def ema_kernel(self, n: int, decay: float, device, dtype):
+        if n <= 0:
+            return torch.empty((0, 0), device=device, dtype=dtype)
+        idx = torch.arange(n, device=device)
+        diff = (idx[:, None] - idx[None, :]).clamp_min(0)
+        kernel = (decay ** diff).tril().to(dtype=dtype)
+        return kernel
+
     def std_loss(self, var_stat, z_centered):
         var_gd = z_centered.pow(2)
         diff = self.variance_targets - var_stat
         std_loss_pn = -self.cfg.variance_hinge_fn(diff) * var_gd if not self.cfg.bidirectional_variance_loss else -diff * var_gd
         return std_loss_pn
     
-    def cov_loss(self, z_centered, lateral):
+    def prepare_lat_in_for_cov(self, z_centered: torch.Tensor, store: MappingStore):
+        lat_in = z_centered.detach()
+        if self.cfg.lateral_shift:
+            lat_in = self.shift_lateral_input(lat_in, store)
+        return lat_in
+
+    def cov_target(self, cov_stat: torch.Tensor, z_centered: torch.Tensor, lat_in: torch.Tensor):
+        if self.cfg.lateral_shift and self.cfg.lateral_shift_cov_target:
+            # Match lateral training target to shifted usage: cross-cov(previous, current).
+            return (lat_in.T @ z_centered.detach()) / max(1, z_centered.shape[0])
+        return cov_stat
+
+    def cov_loss(self, z_centered, lateral, store: MappingStore, lat_in=None):
         if self.cfg.use_cov_directly:
             cov = (z_centered.T @ z_centered) / (z_centered.shape[0] - 1)
             cov.diagonal().zero_()
@@ -86,9 +151,25 @@ class TRLoss(nn.Module):
 
             return  cov_loss
         else:
-            return z_centered * (lateral(z_centered.detach())).detach()
+            if lat_in is None:
+                lat_in = self.prepare_lat_in_for_cov(z_centered, store)
+            return z_centered * (lateral(lat_in)).detach()
+
+    def shift_lateral_input(self, lat_in: torch.Tensor, store: MappingStore):
+        shifted = torch.zeros_like(lat_in)
+        if self.cfg.sim_within_chunks:
+            B, D = lat_in.shape
+            lat_chunks = lat_in.view(B // self.chunk_size, self.chunk_size, D)
+            shifted_chunks = shifted.view(B // self.chunk_size, self.chunk_size, D)
+            shifted_chunks[:, 1:, :] = lat_chunks[:, :-1, :]
+            return shifted
+
+        shifted[1:] = lat_in[:-1]
+        shifted[0] = store.last_centered_z.value
+        return shifted
     
     def lat_loss(self, cov_stat, lateral):
+        cov_stat = cov_stat.clone()
         # no self-connections
         cov_stat.fill_diagonal_(0.0)
         # artificially sparsen with persistant mask
@@ -118,9 +199,17 @@ class TRSeqLoss(TRLoss):
         # average over sequence for compatibility with TCLoss
         return (diff ** 2).mean(dim=1)  
 
-    def cov_loss(self, z_centered, lateral):
+    def cov_loss(self, z_centered, lateral, store: MappingStore, lat_in=None):
         B, S, D = z_centered.shape
         z_flat = z_centered.contiguous().view(-1, D)
-        lat_flat = lateral(z_flat.detach()).detach()
+        if lat_in is None:
+            lat_in = z_flat.detach()
+            if self.cfg.lateral_shift:
+                shifted = torch.zeros_like(z_centered)
+                shifted[:, 1:, :] = z_centered[:, :-1, :]
+                lat_in = shifted.view(-1, D).detach()
+        else:
+            lat_in = lat_in.view(-1, D)
+        lat_flat = lateral(lat_in).detach()
         lat = lat_flat.view(B, S, D)
         return z_centered * lat

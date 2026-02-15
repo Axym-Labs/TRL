@@ -24,6 +24,8 @@ class MappingStore:
     var: LeakyIntegrator
     cov: LeakyIntegrator
     last_z: LeakyIntegrator
+    trace_z: LeakyIntegrator
+    last_centered_z: LeakyIntegrator
 
     pre_nonlin_mu: LeakyIntegrator
     pre_nonlin_var: LeakyIntegrator
@@ -37,6 +39,8 @@ class MappingStore:
         self.var=LeakyIntegrator(torch.ones(out_dim, device=cfg.device), pre_m, overwrite_at_start=cfg.overwrite_at_start)
         self.cov=LeakyIntegrator(torch.zeros((out_dim, out_dim), device=cfg.device), cfg.cov_momentum, overwrite_at_start=cfg.overwrite_at_start)
         self.last_z=LeakyIntegrator(torch.zeros(out_dim, device=cfg.device), cfg.last_z_momentum, overwrite_at_start=cfg.overwrite_at_start)
+        self.trace_z=LeakyIntegrator(torch.zeros(out_dim, device=cfg.device), cfg.trace_momentum, overwrite_at_start=cfg.overwrite_at_start)
+        self.last_centered_z=LeakyIntegrator(torch.zeros(out_dim, device=cfg.device), 0.0, overwrite_at_start=cfg.overwrite_at_start)
         self.pre_nonlin_mu=LeakyIntegrator(torch.zeros(out_dim, device=cfg.device), pre_m, overwrite_at_start=cfg.overwrite_at_start)
         self.pre_nonlin_var=LeakyIntegrator(torch.ones(out_dim, device=cfg.device), pre_m, overwrite_at_start=cfg.overwrite_at_start)
         self.problem_type = problem_type
@@ -65,6 +69,7 @@ class MappingStore:
         self.var.update(var)
         cov = (z_centered.T @ z_centered) / z_centered.shape[0]
         self.cov.update(cov)
+        self.last_centered_z.update(z_centered[-1])
 
     def update_last_z(self, z: torch.Tensor):
         if self.problem_type == "sequence" and z.ndim >= 3:
