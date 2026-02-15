@@ -430,13 +430,6 @@ def plot_sequence_per_digit_paths(
     plt.close(fig)
 
 
-def _apply_encoder_layers_once(encoder_module: TRSeqEncoder | TRSeqElementwiseEncoder, step_input: torch.Tensor) -> torch.Tensor:
-    cur = step_input
-    for _pass_i, _unique_i, layer in encoder_module.enumerate_pass_layers():
-        cur = layer(cur)
-    return cur
-
-
 def autoregressive_generate_rows(
     encoder_trainer: SeqEncoderTrainer,
     predictor: PredictorHead,
@@ -453,34 +446,18 @@ def autoregressive_generate_rows(
     total_rows = s if total_rows is None else int(total_rows)
     assert total_rows >= observed_rows
 
-    encoder_module = encoder_trainer.encoder
     device = x_seq.device
     out_seq = torch.zeros((b, total_rows, d), device=device, dtype=x_seq.dtype)
     out_seq[:, :observed_rows, :] = x_seq[:, :observed_rows, :]
 
-    if isinstance(encoder_module, TRSeqEncoder):
-        hidden = torch.zeros((b, encoder_module.rep_dim), device=device, dtype=x_seq.dtype)
-
-        # Condition hidden on observed rows.
-        for t in range(observed_rows):
-            step_in = encoder_module.concat_x_t_hidden(x_seq, t, hidden)
-            hidden = _apply_encoder_layers_once(encoder_module, step_in)
-
-        cur_row = x_seq[:, observed_rows - 1, :]
-        for t in range(observed_rows, total_rows):
-            step_in = torch.cat([cur_row, hidden], dim=1)
-            hidden = _apply_encoder_layers_once(encoder_module, step_in)
-            pred_next = predictor.mapping(hidden)
-            out_seq[:, t, :] = pred_next
-            cur_row = pred_next
-    else:
-        # Elementwise sequence encoder: no recurrent hidden state.
-        cur_row = x_seq[:, observed_rows - 1, :]
-        for t in range(observed_rows, total_rows):
-            hidden = _apply_encoder_layers_once(encoder_module, cur_row)
-            pred_next = predictor.mapping(hidden)
-            out_seq[:, t, :] = pred_next
-            cur_row = pred_next
+    # IMPORTANT:
+    # Use the full PredictorHead forward path at each step so analysis matches
+    # the trained model behavior (encoder + temporal_fusion + mapping).
+    for t in range(observed_rows, total_rows):
+        prefix = out_seq[:, :t, :]
+        pred_seq = predictor(prefix)
+        pred_next = pred_seq[:, -1, :]
+        out_seq[:, t, :] = pred_next
 
     return out_seq
 
