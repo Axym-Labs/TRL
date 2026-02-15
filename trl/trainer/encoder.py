@@ -9,6 +9,7 @@ from trl.modules.encoder import TREncoder
 class EncoderTrainer(pl.LightningModule):
     def __init__(self, ident, cfg: Config, encoder: TREncoder, pre_model: nn.Module|None=None):
         super().__init__()
+        self.cfg = cfg
         self.ident = ident
         self.train_concurrently = cfg.train_encoder_concurrently
         self.encoder = encoder
@@ -37,7 +38,13 @@ class EncoderTrainer(pl.LightningModule):
         optimizer = self.optimizers()
         optimizer.zero_grad()
         total_loss = self._training_step_concurrent(prepared_inp) if self.train_concurrently else self._training_step_singlelayer(prepared_inp)
-        self.manual_backward(total_loss)    
+        self.manual_backward(total_loss)
+        if self.cfg.encoder_grad_clip_norm and self.cfg.encoder_grad_clip_norm > 0.0:
+            self.clip_gradients(
+                optimizer,
+                gradient_clip_val=float(self.cfg.encoder_grad_clip_norm),
+                gradient_clip_algorithm="norm",
+            )
         optimizer.step()
 
     def _training_step_concurrent(self, prepared_inp: torch.Tensor):
@@ -70,12 +77,24 @@ class EncoderTrainer(pl.LightningModule):
         return acts.detach(), total_loss, lateral_loss, metrics
 
     def configure_optimizers(self):
-        all_params = []
+        layer_params = []
+        lat_params = []
         for layer in self.encoder.layers:
-            layer_params, lat_params = layer.layer_lat_params()
-            all_params.extend(layer_params)
-            all_params.extend(lat_params)
-        return self.optim_cls(all_params, lr=self.lr)
+            lp, ltp = layer.layer_lat_params()
+            layer_params.extend(lp)
+            lat_params.extend(ltp)
+
+        lat_factor = float(self.cfg.encoder_lat_lr_factor)
+        if lat_factor <= 0.0:
+            raise ValueError(f"encoder_lat_lr_factor must be > 0, got {lat_factor}")
+        if abs(lat_factor - 1.0) < 1e-12:
+            return self.optim_cls(layer_params + lat_params, lr=self.lr)
+
+        param_groups = [
+            {"params": layer_params, "lr": self.lr},
+            {"params": lat_params, "lr": self.lr * lat_factor},
+        ]
+        return self.optim_cls(param_groups, lr=self.lr)
 
     def on_train_epoch_end(self):
         for i, layer in  self.encoder.enumerate_unique_layers():

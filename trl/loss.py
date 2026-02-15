@@ -197,6 +197,17 @@ class TRSeqLoss(TRLoss):
         # average over sequence for compatibility with TCLoss
         return (diff ** 2).mean(dim=1)  
 
+    def std_loss(self, var_stat, z_centered):
+        std_loss_pn = super().std_loss(var_stat, z_centered)
+        # Optional fix: avoid implicit scaling with sequence length S.
+        # TRLoss.forward does mean(dim=0).sum() afterward.
+        if self.cfg.sequence_std_mean_over_time and std_loss_pn.ndim == 3:
+            # Keep expected magnitude comparable to legacy reduction by
+            # compensating for averaging across time.
+            s = z_centered.shape[1]
+            return std_loss_pn.mean(dim=1) * s  # [B, D]
+        return std_loss_pn
+
     def prepare_lat_in_for_cov(self, z_centered: torch.Tensor, store: MappingStore):
         lat_in = z_centered.detach()
         if self.cfg.lateral_shift:

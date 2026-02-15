@@ -43,6 +43,9 @@ class TRLossConfig:
     trace_decay: float = 0.9
     lateral_shift: bool = False
     lateral_shift_cov_target: bool = False
+    # Sequence-only: if True, average std-loss contribution across time before batch reduction.
+    # Keeps std-loss scale consistent with sequence length.
+    sequence_std_mean_over_time: bool = False
 
     variance_hinge_fn = lambda self, x: F.relu(x)
     sim_loss_fn = lambda self, a, b: (a-b)**2
@@ -120,6 +123,8 @@ class Config:
     epochs: int = 10
     head_epochs: int = 10
     lr: float = 1e-4
+    encoder_grad_clip_norm: float = 0.0
+    encoder_lat_lr_factor: float = 1.0
 
     data_config: DataConfig = field(default_factory=DataConfig)
     trloss_config: TRLossConfig = field(default_factory=TRLossConfig)
