@@ -26,9 +26,9 @@ Cite the paper:
   author       = {Wiest, Davide},
   title        = {{Temporal Regularized Learning: Self-supervised learning local in space and time}},
   publisher    = {Zenodo},
-  year         = {2025},
-  doi          = {10.5281/zenodo.17840254},
-  url          = {https://doi.org/10.5281/zenodo.17840254}
+  year         = {2026},
+  doi          = {10.5281/zenodo.18673107},
+  url          = {https://doi.org/10.5281/zenodo.18673107}
 }
 ```
 
@@ -37,6 +37,7 @@ Cite the paper:
 - Train a TRL model with `train.py`.
 - `trl/config/configurations.py` contains functions that modify the setup, e.g. modify the model architecture.
 - The `previous_versions` folder has a README with short explanations of what changed in each version.
+
 
 > The paper experiments were run on earlier commits than the current one.
 > MNIST Classification
