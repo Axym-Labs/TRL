@@ -2,10 +2,10 @@
 # Temporal Regularized Learning: Self-Supervised Learning Local In Space And Time
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17840254.svg)](https://doi.org/10.5281/zenodo.17840254)
-[![ResearchGate](https://img.shields.io/badge/Read%20on-ResearchGate-00cc66.svg)](https://www.researchgate.net/publication/398409613_Temporal_Regularized_Learning_Self-supervised_learning_local_in_space_and_time)
+[![ResearchGate](https://img.shields.io/badge/Read%20on-ResearchGate-00cc66.svg)](https://www.researchgate.net/publication/400877450_Temporal_Regularized_Learning_Self-supervised_learning_local_in_space_and_time?_tp=eyJjb250ZXh0Ijp7InBhZ2UiOiJwcm9maWxlIiwicHJldmlvdXNQYWdlIjoiaG9tZSIsInBvc2l0aW9uIjoicGFnZUNvbnRlbnQifX0)
 
 
-**[Paper PDF](https://zenodo.org/records/17840254)**
+**[Paper PDF](https://zenodo.org/records/18673107)**
 
 Temporal Regularized Learning (TRL) is a highly local and self-supervised prodecure that optimizes
 each neuron individually. We adapt the self-supervised loss formulation of VICReg, consisting
