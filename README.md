@@ -37,3 +37,14 @@ Cite the paper:
 - Train a TRL model with `train.py`.
 - `trl/config/configurations.py` contains functions that modify the setup, e.g. modify the model architecture.
 - The `previous_versions` folder has a README with short explanations of what changed in each version.
+
+> The paper experiments were run on earlier commits than the current one.
+> MNIST Classification
+> - Backprop: `25908634afa795840b0026d8481fa69338e857ec`
+> - TRL / TRL-S: `b39b73fac94e984f089820bec7a421499bcd6c0d`
+>
+> MNIST Rows next-row predictiion:
+> - `0e454ac` (`rnn and new analysis outputs`)
+> - `221f22c` (`rnn setup`)
+>
+> Current code has changed since these commits.

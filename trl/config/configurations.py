@@ -104,7 +104,7 @@ def eqprop_scale_network(conf: Config):
 
 @change_configuration
 def standard_setup(conf: Config):
-    conf.head_use_layers = False
+    conf.head_use_layers = True
     conf.encoder_optim = torch.optim.SGD
     conf.train_encoder_concurrently = False
     conf.trloss_config.use_chunk_paritions = True
