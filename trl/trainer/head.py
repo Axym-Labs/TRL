@@ -9,6 +9,16 @@ from trl.modules.temporal_fusion import build_temporal_fusion
 from trl.loss import TRSeqLoss
 from trl.store import MappingStore
 
+
+def _build_head_optimizer(cfg: Config, param_groups):
+    optim_ctor = cfg.head_optim
+    lr = float(cfg.head_lr if cfg.head_lr is not None else cfg.lr)
+    try:
+        return optim_ctor(param_groups, lr=lr)
+    except TypeError:
+        return optim_ctor(param_groups)
+
+
 class ClassifierHead(pl.LightningModule):
     def __init__(self, encoder: EncoderTrainer, cfg: Config, out_dim: int = 10):
         super().__init__()
@@ -19,7 +29,7 @@ class ClassifierHead(pl.LightningModule):
             sum([self.encoder.encoder.layers[i].lin.out_features for i in cfg.head_use_layers])
         self.mapping = nn.Linear(self.rep_dim, out_dim)
         self.criterion = nn.CrossEntropyLoss()
-        self.lr = cfg.lr
+        self.lr = float(cfg.head_lr if cfg.head_lr is not None else cfg.lr)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         with torch.no_grad():
@@ -46,7 +56,7 @@ class ClassifierHead(pl.LightningModule):
         param_groups = [
             {"params": self.mapping.parameters(), "lr": self.lr},
         ]
-        return torch.optim.Adam(param_groups, lr=self.lr)
+        return _build_head_optimizer(self.cfg, param_groups)
     
     def log_metric(self, out, y, is_train: bool):
         acc = (out.argmax(dim=1) == y).float().mean()
@@ -135,6 +145,6 @@ class PredictorHead(RegressorHead):
             param_groups.append({"params": self.temporal_fusion.parameters(), "lr": self.lr})
         if self.fusion_lat is not None:
             param_groups.append({"params": self.fusion_lat.parameters(), "lr": self.lr})
-        return torch.optim.Adam(param_groups, lr=self.lr)
+        return _build_head_optimizer(self.cfg, param_groups)
 
 

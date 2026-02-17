@@ -255,8 +255,11 @@ def _get_labels(ds):
     return labels
 
 
-def _make_train_loader(base_train, cfg: DataConfig):
-    if cfg.use_coherent_sampler:
+def _make_train_loader(base_train, cfg: DataConfig, use_coherent_sampler: bool | None = None):
+    if use_coherent_sampler is None:
+        use_coherent_sampler = cfg.use_coherent_sampler
+
+    if use_coherent_sampler:
         label_list = _get_labels(base_train)
         sampler = CoherentSampler(
             label_list=label_list,
@@ -325,8 +328,12 @@ def _build_torchvision_loaders(cfg: DataConfig, problem_type: str, spec: Dataset
     head_base_train = _instantiate(spec.train_dataset_fn, train=True, transform=val_tf)
     val_ds = _instantiate(spec.val_dataset_fn, train=False, transform=val_tf)
 
-    train_loader = _make_train_loader(base_train, cfg)
-    head_train_loader = _make_train_loader(head_base_train, cfg)
+    train_loader = _make_train_loader(base_train, cfg, use_coherent_sampler=cfg.use_coherent_sampler)
+    head_train_loader = _make_train_loader(
+        head_base_train,
+        cfg,
+        use_coherent_sampler=cfg.use_coherent_sampler_for_head,
+    )
     val_loader = _make_val_loader(val_ds, cfg)
     return train_loader, head_train_loader, val_loader
 
@@ -380,8 +387,12 @@ def _build_timit_loaders(cfg: DataConfig, problem_type: str):
     val_base = LocalTimitDataset(test_root)
     train_ds = TimitSequenceDataset(train_base)
     val_ds = TimitSequenceDataset(val_base)
-    train_loader = _make_train_loader(train_ds, cfg)
-    head_train_loader = _make_train_loader(train_ds, cfg)
+    train_loader = _make_train_loader(train_ds, cfg, use_coherent_sampler=cfg.use_coherent_sampler)
+    head_train_loader = _make_train_loader(
+        train_ds,
+        cfg,
+        use_coherent_sampler=cfg.use_coherent_sampler_for_head,
+    )
     val_loader = _make_val_loader(val_ds, cfg)
     return train_loader, head_train_loader, val_loader
 
@@ -420,8 +431,12 @@ def _build_yesno_loaders(cfg: DataConfig, problem_type: str):
     )
     train_ds = YesNoSequenceDataset(train_base)
     val_ds = YesNoSequenceDataset(val_base)
-    train_loader = _make_train_loader(train_ds, cfg)
-    head_train_loader = _make_train_loader(train_ds, cfg)
+    train_loader = _make_train_loader(train_ds, cfg, use_coherent_sampler=cfg.use_coherent_sampler)
+    head_train_loader = _make_train_loader(
+        train_ds,
+        cfg,
+        use_coherent_sampler=cfg.use_coherent_sampler_for_head,
+    )
     val_loader = _make_val_loader(val_ds, cfg)
     return train_loader, head_train_loader, val_loader
 
@@ -446,8 +461,12 @@ def _build_speechcommands_loaders(cfg: DataConfig, problem_type: str):
 
     train_ds = SpeechCommandsSequenceDataset(train_base)
     val_ds = SpeechCommandsSequenceDataset(val_base)
-    train_loader = _make_train_loader(train_ds, cfg)
-    head_train_loader = _make_train_loader(train_ds, cfg)
+    train_loader = _make_train_loader(train_ds, cfg, use_coherent_sampler=cfg.use_coherent_sampler)
+    head_train_loader = _make_train_loader(
+        train_ds,
+        cfg,
+        use_coherent_sampler=cfg.use_coherent_sampler_for_head,
+    )
     val_loader = _make_val_loader(val_ds, cfg)
     return train_loader, head_train_loader, val_loader
 

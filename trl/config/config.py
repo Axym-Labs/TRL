@@ -91,6 +91,8 @@ class DataConfig:
     # If True, use class-coherent chunk ordering via CoherentSampler.
     # If False, use standard shuffled minibatches.
     use_coherent_sampler: bool = True
+    # Head training uses plain shuffled batches by default.
+    use_coherent_sampler_for_head: bool = False
 
 @dataclass
 class Config:
@@ -104,6 +106,7 @@ class Config:
     # finish_setup converts it to either the specified layers or None
     head_use_layers: list|bool|None = False
     encoder_optim: type[torch.optim.Optimizer] = torch.optim.SGD
+    head_optim: type[torch.optim.Optimizer] = torch.optim.SGD
 
     seed: int = 42
     # pass -> a simple forward pass
@@ -130,6 +133,7 @@ class Config:
     epochs: int = 10
     head_epochs: int = 10
     lr: float = 3e-4
+    head_lr: float = 0.1
     encoder_grad_clip_norm: float = 1.0
     encoder_lat_lr_factor: float = 0.03
 
