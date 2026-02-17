@@ -2,6 +2,9 @@ from dataclasses import dataclass
 from typing import Callable
 from pathlib import Path
 from urllib.error import URLError
+import urllib.request
+import zipfile
+import re
 import wave
 import numpy as np
 
@@ -21,6 +24,9 @@ class DatasetSpec:
     train_transform_fn: Callable[[bool], transforms.Compose]
     val_transform_fn: Callable[[], transforms.Compose]
     supports_sequence_rows: bool = False
+
+
+PAMAP2_ACTIVITY_IDS = (1, 2, 3, 4, 5, 6, 7, 12, 13, 16, 17, 24)
 
 
 def _mnist_train_transform(augment: bool):
@@ -297,6 +303,202 @@ def _make_val_loader(val_ds, cfg: DataConfig):
     )
 
 
+def _make_ordered_or_shuffled_train_loader(train_ds, cfg: DataConfig, ordered: bool):
+    return DataLoader(
+        train_ds,
+        batch_size=cfg.batch_size,
+        shuffle=not ordered,
+        num_workers=cfg.num_workers,
+        pin_memory=cfg.pin_memory,
+        drop_last=True,
+        persistent_workers=cfg.num_workers > 0,
+    )
+
+
+def _download_pamap2_if_needed(root: Path, allow_download: bool):
+    dataset_root = root / "PAMAP2_Dataset"
+    protocol_root = dataset_root / "Protocol"
+    if protocol_root.exists():
+        return dataset_root
+
+    if not allow_download:
+        raise FileNotFoundError(
+            f"Missing PAMAP2 protocol files under '{protocol_root}'. "
+            "Set data_config.allow_download=True or place PAMAP2_Dataset manually under data/pamap2."
+        )
+
+    root.mkdir(parents=True, exist_ok=True)
+    zip_path = root / "PAMAP2_Dataset.zip"
+    url = "https://archive.ics.uci.edu/ml/machine-learning-databases/00231/PAMAP2_Dataset.zip"
+    if not zip_path.exists():
+        urllib.request.urlretrieve(url, zip_path)
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        zf.extractall(root)
+    if not protocol_root.exists():
+        raise RuntimeError(f"PAMAP2 extraction succeeded but protocol files were not found in '{protocol_root}'.")
+    return dataset_root
+
+
+def _pamap_subject_id(path: Path):
+    match = re.search(r"subject(\d+)", path.stem.lower())
+    if match is None:
+        raise ValueError(f"Could not parse subject id from PAMAP2 filename: {path.name}")
+    return int(match.group(1))
+
+
+def _load_pamap_subject(path: Path, stride: int):
+    # 54 columns total: [timestamp, activity_id, ...52 sensor features]
+    data = np.loadtxt(path, usecols=tuple(range(1, 54)), dtype=np.float32)
+    if data.ndim == 1:
+        data = data.reshape(1, -1)
+
+    labels = data[:, 0].astype(np.int32, copy=False)
+    feats = data[:, 1:].astype(np.float32, copy=False)
+
+    valid = np.isin(labels, PAMAP2_ACTIVITY_IDS)
+    feats = feats[valid]
+    labels = labels[valid]
+    stride = max(1, int(stride))
+    if stride > 1:
+        feats = feats[::stride]
+        labels = labels[::stride]
+    return feats, labels
+
+
+def _map_pamap_labels(labels: np.ndarray):
+    max_id = max(PAMAP2_ACTIVITY_IDS)
+    lut = np.full((max_id + 1,), fill_value=-1, dtype=np.int64)
+    for idx, act_id in enumerate(PAMAP2_ACTIVITY_IDS):
+        lut[act_id] = idx
+    mapped = lut[labels]
+    if (mapped < 0).any():
+        raise ValueError("Encountered unsupported PAMAP2 activity labels after filtering.")
+    return mapped.astype(np.int64, copy=False)
+
+
+def _normalize_with_train_stats(x: np.ndarray, train_mean: np.ndarray, train_std: np.ndarray):
+    x = x.astype(np.float32, copy=True)
+    nan_mask = np.isnan(x)
+    if nan_mask.any():
+        x[nan_mask] = train_mean[nan_mask[1]]
+    x -= train_mean
+    x /= train_std
+    return x
+
+
+def _build_pamap2_arrays(cfg: DataConfig):
+    pamap_root = Path(cfg.data_path) / "pamap2"
+    dataset_root = _download_pamap2_if_needed(pamap_root, cfg.allow_download)
+    protocol_root = dataset_root / "Protocol"
+    files = sorted(protocol_root.glob("subject*.dat"))
+    if not files:
+        raise FileNotFoundError(f"No PAMAP2 protocol files found under '{protocol_root}'.")
+
+    cache_file = dataset_root / (
+        f"cache_protocol_stride{int(cfg.pamap2_stride)}_"
+        f"subjectsplit{int(cfg.pamap2_subject_disjoint_split)}_seed{int(cfg.pamap2_split_seed)}.npz"
+    )
+    if cache_file.exists():
+        cached = np.load(cache_file, allow_pickle=False)
+        return (
+            cached["x_train"].astype(np.float32, copy=False),
+            cached["y_train"].astype(np.int64, copy=False),
+            cached["x_val"].astype(np.float32, copy=False),
+            cached["y_val"].astype(np.int64, copy=False),
+            cached["x_test"].astype(np.float32, copy=False),
+            cached["y_test"].astype(np.int64, copy=False),
+        )
+
+    by_subject = {_pamap_subject_id(f): f for f in files}
+    subject_ids = sorted(by_subject.keys())
+    if cfg.pamap2_subject_disjoint_split:
+        if len(subject_ids) < 3:
+            raise ValueError("PAMAP2 subject-disjoint split requires at least 3 subjects.")
+        train_subjects = subject_ids[:-2]
+        val_subjects = [subject_ids[-2]]
+        test_subjects = [subject_ids[-1]]
+    else:
+        train_subjects = subject_ids
+        val_subjects = []
+        test_subjects = []
+
+    def load_subject_group(subjects):
+        xs, ys = [], []
+        for sid in subjects:
+            x, y = _load_pamap_subject(by_subject[sid], cfg.pamap2_stride)
+            xs.append(x)
+            ys.append(y)
+        if not xs:
+            return np.empty((0, 52), dtype=np.float32), np.empty((0,), dtype=np.int64)
+        x_all = np.concatenate(xs, axis=0)
+        y_all = np.concatenate(ys, axis=0)
+        return x_all, y_all
+
+    x_train, y_train = load_subject_group(train_subjects)
+    if cfg.pamap2_subject_disjoint_split:
+        x_val, y_val = load_subject_group(val_subjects)
+        x_test, y_test = load_subject_group(test_subjects)
+    else:
+        # Fallback split when subject-disjoint mode is disabled.
+        n = x_train.shape[0]
+        rng = np.random.default_rng(int(cfg.pamap2_split_seed))
+        perm = rng.permutation(n)
+        val_n = int(0.1 * n)
+        test_n = int(0.1 * n)
+        train_n = n - val_n - test_n
+        idx_train = perm[:train_n]
+        idx_val = perm[train_n:train_n + val_n]
+        idx_test = perm[train_n + val_n:]
+        x_test, y_test = x_train[idx_test], y_train[idx_test]
+        x_val, y_val = x_train[idx_val], y_train[idx_val]
+        x_train, y_train = x_train[idx_train], y_train[idx_train]
+
+    y_train = _map_pamap_labels(y_train)
+    y_val = _map_pamap_labels(y_val)
+    y_test = _map_pamap_labels(y_test)
+
+    train_mean = np.nanmean(x_train, axis=0).astype(np.float32)
+    train_mean = np.where(np.isnan(train_mean), 0.0, train_mean).astype(np.float32)
+    train_std = np.nanstd(x_train, axis=0).astype(np.float32)
+    train_std = np.where((~np.isfinite(train_std)) | (train_std < 1e-6), 1.0, train_std).astype(np.float32)
+
+    x_train = _normalize_with_train_stats(x_train, train_mean, train_std)
+    x_val = _normalize_with_train_stats(x_val, train_mean, train_std)
+    x_test = _normalize_with_train_stats(x_test, train_mean, train_std)
+
+    np.savez_compressed(
+        cache_file,
+        x_train=x_train,
+        y_train=y_train,
+        x_val=x_val,
+        y_val=y_val,
+        x_test=x_test,
+        y_test=y_test,
+    )
+    return x_train, y_train, x_val, y_val, x_test, y_test
+
+
+def _build_pamap2_loaders(cfg: DataConfig, problem_type: str):
+    if problem_type != "pass":
+        raise ValueError("dataset_name='pamap2' currently supports problem_type='pass' only.")
+
+    x_train, y_train, x_val, y_val, _x_test, _y_test = _build_pamap2_arrays(cfg)
+    train_ds = torch.utils.data.TensorDataset(
+        torch.from_numpy(x_train),
+        torch.from_numpy(y_train).long(),
+    )
+    val_ds = torch.utils.data.TensorDataset(
+        torch.from_numpy(x_val),
+        torch.from_numpy(y_val).long(),
+    )
+
+    ordered = bool(cfg.temporal_coherence_ordering)
+    train_loader = _make_ordered_or_shuffled_train_loader(train_ds, cfg, ordered=ordered)
+    head_train_loader = _make_ordered_or_shuffled_train_loader(train_ds, cfg, ordered=ordered)
+    val_loader = _make_val_loader(val_ds, cfg)
+    return train_loader, head_train_loader, val_loader
+
+
 def _build_torchvision_loaders(cfg: DataConfig, problem_type: str, spec: DatasetSpec, force_rows_sequence: bool = False):
     if force_rows_sequence and problem_type != "sequence":
         raise ValueError("dataset_name='mnist-rows' requires problem_type='sequence'.")
@@ -515,5 +717,7 @@ def build_dataloaders(cfg: DataConfig, problem_type: str):
         return _build_yesno_loaders(cfg, problem_type)
     if name == "speechcommands":
         return _build_speechcommands_loaders(cfg, problem_type)
+    if name == "pamap2":
+        return _build_pamap2_loaders(cfg, problem_type)
     raise ValueError(f"Unknown dataset_name='{cfg.dataset_name}'.")
 

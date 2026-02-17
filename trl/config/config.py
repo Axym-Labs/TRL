@@ -94,6 +94,15 @@ class DataConfig:
     # Head training uses plain shuffled batches by default.
     use_coherent_sampler_for_head: bool = False
 
+    # Generic temporal-order toggle for naturally sequential datasets (e.g. PAMAP2):
+    # True keeps chronological sample ordering, False shuffles training samples.
+    temporal_coherence_ordering: bool = False
+    # PAMAP2-specific downsampling stride (100 Hz -> 10 Hz when stride=10).
+    pamap2_stride: int = 10
+    # If True, split PAMAP2 by subject IDs (train/val/test subject-disjoint).
+    pamap2_subject_disjoint_split: bool = True
+    pamap2_split_seed: int = 42
+
 @dataclass
 class Config:
     project_name: str = "experiments_mnist"

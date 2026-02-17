@@ -152,5 +152,26 @@ def sgd_optim(conf: Config):
     conf.trloss_config.std_coeff *= 2
 
 @change_configuration
+def temporal_coherence_ordering(conf: Config, enabled: bool = True):
+    conf.data_config.temporal_coherence_ordering = enabled
+
+@change_configuration
+def pamap2_setup(conf: Config):
+    # PAMAP2 protocol files: per-sample activity classification on wearable streams.
+    conf.data_config.dataset_name = "pamap2"
+    conf.problem_type = "pass"
+    conf.head_task = "classification"
+    conf.head_out_dim = 12
+    conf.encoders = [
+        EncoderConfig(((52, 256), (256, 128)))
+    ]
+    conf.data_config.batch_size = 512
+    conf.data_config.use_coherent_sampler = False
+    conf.data_config.use_coherent_sampler_for_head = False
+    conf.data_config.temporal_coherence_ordering = True
+    conf.lr = 1e-3
+    conf.head_lr = 1e-2
+
+@change_configuration
 def finish_setup(conf: Config):
     conf.setup_head_use_layers()
