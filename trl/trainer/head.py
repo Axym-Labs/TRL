@@ -43,11 +43,15 @@ class ClassifierHead(pl.LightningModule):
         self.log_metric(out, y, False)
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.mapping.parameters(), lr=self.lr)
+        param_groups = [
+            {"params": self.mapping.parameters(), "lr": self.lr},
+        ]
+        return torch.optim.Adam(param_groups, lr=self.lr)
     
     def log_metric(self, out, y, is_train: bool):
         acc = (out.argmax(dim=1) == y).float().mean()
         mode = "train" if is_train else "val"
+        self.log(f'{mode}_acc', acc, prog_bar=True)
         self.log(f'classifier_{mode}_acc', acc, prog_bar=True)
 
 
@@ -58,6 +62,7 @@ class RegressorHead(ClassifierHead):
 
     def log_metric(self, out, y, is_train: bool):
         mode = "train" if is_train else "val"
+        self.log(f"{mode}_loss", self.criterion(out, y))
         self.log(f"{mode}_prediction_loss", self.criterion(out, y))
 
 
@@ -123,11 +128,13 @@ class PredictorHead(RegressorHead):
         self.log_metric(out, y, False)
 
     def configure_optimizers(self):
-        params = list(self.mapping.parameters())
+        param_groups = [
+            {"params": self.mapping.parameters(), "lr": self.lr},
+        ]
         if self.temporal_fusion is not None:
-            params.extend(self.temporal_fusion.parameters())
+            param_groups.append({"params": self.temporal_fusion.parameters(), "lr": self.lr})
         if self.fusion_lat is not None:
-            params.extend(self.fusion_lat.parameters())
-        return torch.optim.Adam(params, lr=self.lr)
+            param_groups.append({"params": self.fusion_lat.parameters(), "lr": self.lr})
+        return torch.optim.Adam(param_groups, lr=self.lr)
 
 

@@ -87,9 +87,8 @@ class EncoderTrainer(pl.LightningModule):
         lat_factor = float(self.cfg.encoder_lat_lr_factor)
         if lat_factor <= 0.0:
             raise ValueError(f"encoder_lat_lr_factor must be > 0, got {lat_factor}")
-        if abs(lat_factor - 1.0) < 1e-12:
-            return self.optim_cls(layer_params + lat_params, lr=self.lr)
-
+        # Always keep encoder and lateral weights in separate parameter groups.
+        # This preserves independent learning-rate control and state separation.
         param_groups = [
             {"params": layer_params, "lr": self.lr},
             {"params": lat_params, "lr": self.lr * lat_factor},

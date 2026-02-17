@@ -43,6 +43,7 @@ class TRLossConfig:
     trace_decay: float = 0.9
     lateral_shift: bool = False
     lateral_shift_cov_target: bool = False
+    decorrelation_eps: float = 1e-6
     # Sequence-only: if True, average std-loss contribution across time before batch reduction.
     # Keeps std-loss scale consistent with sequence length.
     sequence_std_mean_over_time: bool = False
@@ -87,6 +88,9 @@ class DataConfig:
     batch_size: int = 64
     chunk_size: int = 16 # size of coherent same-class chunks
     coherence: float = 1.0
+    # If True, use class-coherent chunk ordering via CoherentSampler.
+    # If False, use standard shuffled minibatches.
+    use_coherent_sampler: bool = True
 
 @dataclass
 class Config:
@@ -98,8 +102,8 @@ class Config:
     # specify which layers the head uses
     # False: uses last layer, True: use all layers
     # finish_setup converts it to either the specified layers or None
-    head_use_layers: list|bool|None = True
-    encoder_optim: type[torch.optim.Optimizer] = torch.optim.Adam
+    head_use_layers: list|bool|None = False
+    encoder_optim: type[torch.optim.Optimizer] = torch.optim.SGD
 
     seed: int = 42
     # pass -> a simple forward pass
@@ -125,9 +129,9 @@ class Config:
     train_encoder_concurrently: bool = True
     epochs: int = 10
     head_epochs: int = 10
-    lr: float = 1e-4
-    encoder_grad_clip_norm: float = 0.0
-    encoder_lat_lr_factor: float = 1.0
+    lr: float = 3e-4
+    encoder_grad_clip_norm: float = 1.0
+    encoder_lat_lr_factor: float = 0.03
 
     data_config: DataConfig = field(default_factory=DataConfig)
     trloss_config: TRLossConfig = field(default_factory=TRLossConfig)

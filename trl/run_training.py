@@ -75,11 +75,15 @@ def run(cfg: Config, return_metrics: bool = False):
     val_results = classifier_trainer.validate(classifier, dataloaders=val_loader)
     val_results = val_results[0] if val_results else {}
 
-    val_metric_key = "classifier_val_acc" if cfg.head_task == "classification" else "val_prediction_loss"
+    val_metric_key = "val_acc" if cfg.head_task == "classification" else "val_loss"
     callback_metric = classifier_trainer.callback_metrics.get(val_metric_key)
     final_val_metric = float(callback_metric.item()) if callback_metric is not None else None
-    if final_val_metric is None and val_metric_key in val_results:
-        final_val_metric = float(val_results[val_metric_key])
+    if final_val_metric is None:
+        legacy_key = "classifier_val_acc" if cfg.head_task == "classification" else "val_prediction_loss"
+        if val_metric_key in val_results:
+            final_val_metric = float(val_results[val_metric_key])
+        elif legacy_key in val_results:
+            final_val_metric = float(val_results[legacy_key])
     if final_val_metric is not None and cfg.logger == "wandb":
         summary_key = "final_val_accuracy" if cfg.head_task == "classification" else "final_val_prediction_loss"
         trainer_logger.experiment.summary[summary_key] = final_val_metric

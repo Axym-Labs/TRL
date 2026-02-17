@@ -11,6 +11,36 @@ import torch.nn.functional as F
 from trl.config.config import Config
 from trl.datasets.mnist import build_dataloaders
 
+def _build_from_encoder_optim(cfg: Config, params):
+    optim_ctor = cfg.encoder_optim
+    if optim_ctor is None:
+        return None
+    # Mirror TRL behavior: use the same optimizer constructor configured in cfg.encoder_optim.
+    # Support plain classes (e.g. torch.optim.SGD) and partial callables.
+    try:
+        return optim_ctor(params, lr=cfg.lr)
+    except TypeError:
+        return optim_ctor(params)
+
+def _build_bp_optimizer_legacy(cfg: Config, params):
+    # Legacy path kept for reference; no longer used in execution.
+    name = str(getattr(cfg, "bp_optimizer", "adam")).lower()
+    momentum = float(getattr(cfg, "bp_momentum", 0.9))
+    if name == "adam":
+        return torch.optim.Adam(params, lr=cfg.lr)
+    if name == "sgdm":
+        return torch.optim.SGD(params, lr=cfg.lr, momentum=momentum)
+    if name == "sgd":
+        return torch.optim.SGD(params, lr=cfg.lr, momentum=0.0)
+    raise ValueError(f"Unsupported bp_optimizer '{name}'. Use one of: adam, sgdm, sgd.")
+
+
+def build_bp_optimizer(cfg: Config, params):
+    opt = _build_from_encoder_optim(cfg, params)
+    if opt is None:
+        raise ValueError("Backprop requires cfg.encoder_optim to be set.")
+    return opt
+
 
 class BPMLP(pl.LightningModule):
     def __init__(self, cfg: Config):
@@ -45,7 +75,9 @@ class BPMLP(pl.LightningModule):
         out = self(x)
         loss = F.cross_entropy(out, y)
         acc = (out.argmax(dim=1) == y).float().mean()
+        self.log("train_acc", acc, prog_bar=True)
         self.log("classifier_train_acc", acc, prog_bar=True)
+        self.log("train_loss", loss)
         self.log("classifier_train_loss", loss)
         return loss
 
@@ -53,10 +85,15 @@ class BPMLP(pl.LightningModule):
         x, y = batch
         out = self(x)
         acc = (out.argmax(dim=1) == y).float().mean()
+        self.log("val_acc", acc, prog_bar=True)
         self.log("classifier_val_acc", acc, prog_bar=True)
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.lr)
+        param_groups = [
+            {"params": self.layers.parameters(), "lr": self.lr},
+            {"params": self.head.parameters(), "lr": self.lr},
+        ]
+        return build_bp_optimizer(self.cfg, param_groups)
 
 class BPSeqMLPPredictor(pl.LightningModule):
     def __init__(self, cfg: Config):
@@ -101,6 +138,7 @@ class BPSeqMLPPredictor(pl.LightningModule):
         y = x_orig[:, 1:, :]
         pred = self(x)
         loss = self.criterion(pred, y)
+        self.log("train_loss", loss, prog_bar=True)
         self.log("train_prediction_loss", loss, prog_bar=True)
         return loss
 
@@ -110,10 +148,15 @@ class BPSeqMLPPredictor(pl.LightningModule):
         y = x_orig[:, 1:, :]
         pred = self(x)
         loss = self.criterion(pred, y)
+        self.log("val_loss", loss, prog_bar=True)
         self.log("val_prediction_loss", loss, prog_bar=True)
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.lr)
+        param_groups = [
+            {"params": self.layers.parameters(), "lr": self.lr},
+            {"params": self.head.parameters(), "lr": self.lr},
+        ]
+        return build_bp_optimizer(self.cfg, param_groups)
 
 
 class BPSeqLinearPredictor(pl.LightningModule):
@@ -159,6 +202,7 @@ class BPSeqLinearPredictor(pl.LightningModule):
         y = x_orig[:, 1:, :]
         pred = self(x)
         loss = self.criterion(pred, y)
+        self.log("train_loss", loss, prog_bar=True)
         self.log("train_prediction_loss", loss, prog_bar=True)
         return loss
 
@@ -168,10 +212,15 @@ class BPSeqLinearPredictor(pl.LightningModule):
         y = x_orig[:, 1:, :]
         pred = self(x)
         loss = self.criterion(pred, y)
+        self.log("val_loss", loss, prog_bar=True)
         self.log("val_prediction_loss", loss, prog_bar=True)
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.lr)
+        param_groups = [
+            {"params": self.layers.parameters(), "lr": self.lr},
+            {"params": self.head.parameters(), "lr": self.lr},
+        ]
+        return build_bp_optimizer(self.cfg, param_groups)
 
 
 def run(cfg: Config, return_metrics: bool = False):
@@ -181,6 +230,8 @@ def run(cfg: Config, return_metrics: bool = False):
     pl.seed_everything(cfg.seed)
 
     cfg.setup_head_use_layers()
+    # Backprop baseline uses standard shuffled minibatches (no coherent chunk ordering).
+    cfg.data_config.use_coherent_sampler = False
     if cfg.epochs != cfg.head_epochs and cfg.problem_type != "sequence":
         raise ValueError(
             f"Backprop baseline trains encoder and output head concurrently; expected epochs == head_epochs, "
@@ -201,6 +252,7 @@ def run(cfg: Config, return_metrics: bool = False):
         model = BPSeqLinearPredictor(cfg) if cfg.bp_sequence_linear else BPSeqMLPPredictor(cfg)
     else:
         model = BPMLP(cfg)
+    clip_norm = float(cfg.encoder_grad_clip_norm) if cfg.encoder_grad_clip_norm is not None else 0.0
     trainer = pl.Trainer(
         max_epochs=cfg.epochs,
         accelerator="auto",
@@ -208,15 +260,21 @@ def run(cfg: Config, return_metrics: bool = False):
         logger=logger,
         enable_checkpointing=False,
         num_sanity_val_steps=0,
+        gradient_clip_val=clip_norm if clip_norm > 0.0 else None,
+        gradient_clip_algorithm="norm" if clip_norm > 0.0 else None,
     )
     trainer.fit(model, train_loader, val_loader)
     val_results = trainer.validate(model, dataloaders=val_loader)
     val_results = val_results[0] if val_results else {}
-    metric_key = "val_prediction_loss" if cfg.problem_type == "sequence" else "classifier_val_acc"
+    metric_key = "val_loss" if cfg.problem_type == "sequence" else "val_acc"
     metric = trainer.callback_metrics.get(metric_key)
     primary = float(metric.item()) if metric is not None else None
-    if primary is None and metric_key in val_results:
-        primary = float(val_results[metric_key])
+    if primary is None:
+        legacy_metric_key = "val_prediction_loss" if cfg.problem_type == "sequence" else "classifier_val_acc"
+        if metric_key in val_results:
+            primary = float(val_results[metric_key])
+        elif legacy_metric_key in val_results:
+            primary = float(val_results[legacy_metric_key])
 
     if return_metrics:
         metrics = {k: float(v) for k, v in val_results.items() if isinstance(v, (int, float))}

@@ -256,12 +256,27 @@ def _get_labels(ds):
 
 
 def _make_train_loader(base_train, cfg: DataConfig):
-    label_list = _get_labels(base_train)
-    sampler = CoherentSampler(label_list=label_list, coherence=cfg.coherence, chunk_size=cfg.chunk_size, shuffle=True)
+    if cfg.use_coherent_sampler:
+        label_list = _get_labels(base_train)
+        sampler = CoherentSampler(
+            label_list=label_list,
+            coherence=cfg.coherence,
+            chunk_size=cfg.chunk_size,
+            shuffle=True,
+        )
+        return DataLoader(
+            base_train,
+            batch_size=cfg.batch_size,
+            sampler=sampler,
+            num_workers=cfg.num_workers,
+            pin_memory=cfg.pin_memory,
+            drop_last=True,
+            persistent_workers=cfg.num_workers > 0,
+        )
     return DataLoader(
         base_train,
         batch_size=cfg.batch_size,
-        sampler=sampler,
+        shuffle=True,
         num_workers=cfg.num_workers,
         pin_memory=cfg.pin_memory,
         drop_last=True,

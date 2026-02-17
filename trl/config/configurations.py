@@ -104,13 +104,19 @@ def eqprop_scale_network(conf: Config):
 
 @change_configuration
 def standard_setup(conf: Config):
-    conf.head_use_layers = True
+    conf.head_use_layers = False
+    conf.encoder_optim = torch.optim.SGD
     conf.train_encoder_concurrently = False
     conf.trloss_config.use_chunk_paritions = True
     # use_cov_directly is not beneficial
     # counteracts doulble-z-term in MSE which favors collapse
     conf.trloss_config.detach_previous = False
     conf.trloss_config.std_coeff *= 2 # because detach_previous=False
+
+@change_configuration
+def old_setup(conf: Config):
+    conf.head_use_layers = True
+    conf.encoder_optim = torch.optim.Adam
 
 @change_configuration
 def last_layer_head(conf: Config):
@@ -129,7 +135,6 @@ def enable_lateral_shift(conf: Config):
 @change_configuration
 def enable_lateral_shift_cov_target(conf: Config):
     conf.trloss_config.lateral_shift_cov_target = True
-
 
 @change_configuration
 def aug_and_rbn_setup(conf: Config):

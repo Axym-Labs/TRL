@@ -65,45 +65,48 @@ def set_sgd(cfg: Config, lr: float, momentum: float = 0.0):
     cfg.lr = lr
     cfg.encoder_optim = partial(torch.optim.SGD, momentum=momentum)
 
+def enable_point1_cov_direct(cfg: Config):
+    # Point 1 proxy: decorrelation from batch covariance penalty only,
+    # remove learned lateral-target matching pressure.
+    cfg.trloss_config.use_cov_directly = True
+    cfg.trloss_config.lat_coeff = 0.0
+
 
 def make_variants():
     return [
         {
-            "name": "adam_baseline",
+            "name": "adam_joint_learned_lat",
             "apply": lambda c: None,
         },
         {
-            "name": "sgd_plain_lr1e4",
+            "name": "sgd_joint_learned_lat_lr1e4_m00",
             "apply": lambda c: set_sgd(c, lr=1e-4, momentum=0.0),
         },
         {
-            "name": "sgd_plain_lr1e4_clip1",
-            "apply": lambda c: (
-                set_sgd(c, lr=1e-4, momentum=0.0),
-                setattr(c, "encoder_grad_clip_norm", 1.0),
-            ),
-        },
-        {
-            "name": "sgd_plain_lr1e4_clip1_lat01",
-            "apply": lambda c: (
-                set_sgd(c, lr=1e-4, momentum=0.0),
-                setattr(c, "encoder_grad_clip_norm", 1.0),
-                setattr(c, "encoder_lat_lr_factor", 0.1),
-            ),
-        },
-        {
-            "name": "sgd_mom09_lr5e4_clip1",
+            "name": "sgdm_joint_learned_lat_lr5e4_m09_clip1",
             "apply": lambda c: (
                 set_sgd(c, lr=5e-4, momentum=0.9),
                 setattr(c, "encoder_grad_clip_norm", 1.0),
             ),
         },
         {
-            "name": "sgd_mom09_lr5e4_clip1_lat01",
+            "name": "sgdm_joint_learned_lat_lr5e4_m09_clip1_lat01",
             "apply": lambda c: (
                 set_sgd(c, lr=5e-4, momentum=0.9),
                 setattr(c, "encoder_grad_clip_norm", 1.0),
                 setattr(c, "encoder_lat_lr_factor", 0.1),
+            ),
+        },
+        {
+            "name": "adam_point1_covdirect_nolat",
+            "apply": lambda c: enable_point1_cov_direct(c),
+        },
+        {
+            "name": "sgdm_point1_covdirect_nolat_lr5e4_m09_clip1",
+            "apply": lambda c: (
+                set_sgd(c, lr=5e-4, momentum=0.9),
+                setattr(c, "encoder_grad_clip_norm", 1.0),
+                enable_point1_cov_direct(c),
             ),
         },
     ]
@@ -128,6 +131,7 @@ def run_matrix(epochs: int, head_epochs: int, seed: int):
             "encoder_optim": str(cfg.encoder_optim),
             "lr": cfg.lr,
             "use_cov_directly": bool(cfg.trloss_config.use_cov_directly),
+            "lat_coeff": float(cfg.trloss_config.lat_coeff),
             "encoder_grad_clip_norm": float(cfg.encoder_grad_clip_norm),
             "encoder_lat_lr_factor": float(cfg.encoder_lat_lr_factor),
         }

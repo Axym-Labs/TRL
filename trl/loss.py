@@ -54,6 +54,7 @@ class TRLoss(nn.Module):
             'cov_loss': cov_loss.detach(),
             'var_stat': store.var.value.mean(),
             'cov_stat': (store.cov.value**2).sum() / z.shape[1],
+            'e_off': self.e_off_metric(z_features, store).detach(),
         }
         return vicreg_loss, lateral_loss, metrics
     
@@ -141,7 +142,8 @@ class TRLoss(nn.Module):
 
     def cov_loss(self, z_centered, lateral, store: MappingStore, lat_in=None):
         if self.cfg.use_cov_directly:
-            cov = (z_centered.T @ z_centered) / (z_centered.shape[0] - 1)
+            z_flat = self.flatten_features(z_centered)
+            cov = (z_flat.T @ z_flat) / max(1, (z_flat.shape[0] - 1))
             cov.diagonal().zero_()
             cov_loss = cov.pow_(2).sum()
 
@@ -150,6 +152,28 @@ class TRLoss(nn.Module):
             if lat_in is None:
                 lat_in = self.prepare_lat_in_for_cov(z_centered, store)
             return z_centered * (lateral(lat_in)).detach()
+
+    def flatten_features(self, z_centered: torch.Tensor) -> torch.Tensor:
+        if z_centered.ndim == 2:
+            return z_centered
+        if z_centered.ndim == 3:
+            b, s, d = z_centered.shape
+            return z_centered.reshape(b * s, d)
+        raise ValueError(f"Unsupported activation rank for decorrelation: {z_centered.ndim}")
+
+    def offdiag(self, m: torch.Tensor) -> torch.Tensor:
+        return m - torch.diag_embed(torch.diagonal(m))
+
+    def e_off_metric(self, z_centered: torch.Tensor, store: MappingStore):
+        z_flat = self.flatten_features(z_centered)
+        eps = float(self.cfg.decorrelation_eps)
+        mu = store.mu.value
+        var = store.var.value
+        z_hat = (z_flat - mu) / torch.sqrt(var + eps)
+        n = max(1, z_hat.shape[0])
+        corr = (z_hat.T @ z_hat) / n
+        off = self.offdiag(corr)
+        return off.abs().mean()
 
     def shift_lateral_input(self, lat_in: torch.Tensor, store: MappingStore):
         shifted = torch.zeros_like(lat_in)
@@ -227,6 +251,9 @@ class TRSeqLoss(TRLoss):
         return cov_stat
 
     def cov_loss(self, z_centered, lateral, store: MappingStore, lat_in=None):
+        if self.cfg.use_cov_directly:
+            return super().cov_loss(z_centered, lateral, store, lat_in=lat_in)
+
         B, S, D = z_centered.shape
         z_flat = z_centered.reshape(-1, D)
         if lat_in is None:

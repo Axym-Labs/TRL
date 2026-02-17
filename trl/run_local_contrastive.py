@@ -104,6 +104,8 @@ def run(cfg: Config, return_metrics: bool = False):
     np.random.seed(cfg.seed)
     torch.manual_seed(cfg.seed)
     pl.seed_everything(cfg.seed)
+    # Local-SupCon baseline uses standard shuffled minibatches (no coherent chunk ordering).
+    cfg.data_config.use_coherent_sampler = False
 
     train_loader, head_train_loader, val_loader = build_dataloaders(cfg.data_config, cfg.problem_type)
 
