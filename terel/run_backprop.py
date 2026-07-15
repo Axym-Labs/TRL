@@ -8,14 +8,14 @@ from pytorch_lightning.loggers import CSVLogger, WandbLogger
 from torch import nn
 import torch.nn.functional as F
 
-from trl.config.config import Config
-from trl.datasets.mnist import build_dataloaders
+from terel.config.config import Config
+from terel.datasets.mnist import build_dataloaders
 
 def _build_from_encoder_optim(cfg: Config, params):
     optim_ctor = cfg.encoder_optim
     if optim_ctor is None:
         return None
-    # Mirror TRL behavior: use the same optimizer constructor configured in cfg.encoder_optim.
+    # Mirror TeReL behavior: use the same optimizer constructor configured in cfg.encoder_optim.
     # Support plain classes (e.g. torch.optim.SGD) and partial callables.
     try:
         return optim_ctor(params, lr=cfg.lr)

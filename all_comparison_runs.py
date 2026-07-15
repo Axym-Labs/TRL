@@ -6,10 +6,10 @@ from pathlib import Path
 import pandas as pd
 import torch
 
-from trl import run_backprop
-from trl import run_local_contrastive
-from trl import run_training
-from trl.config.configurations import *
+from terel import run_backprop
+from terel import run_local_contrastive
+from terel import run_training
+from terel.config.configurations import *
 
 
 OUTPUT_DIR = Path("output") / "metrics"
@@ -118,15 +118,15 @@ if __name__ == "__main__":
     all_rows = []
 
     all_rows.extend(run_full_suite(
-        suite_name="trl_setup",
-        method_name="trl",
+        suite_name="terel_setup",
+        method_name="terel",
         runner=run_training.run,
         cfg_factory=standard_setup,
         temporal_coherence=True,
     ))
     all_rows.extend(run_full_suite(
-        suite_name="trls_setup",
-        method_name="trl",
+        suite_name="terels_setup",
+        method_name="terel",
         runner=run_training.run,
         cfg_factory=identity_cfg,
         temporal_coherence=True,

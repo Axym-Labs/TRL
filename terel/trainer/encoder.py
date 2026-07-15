@@ -2,12 +2,12 @@ import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 
-from trl.config.config import Config
-from trl.modules.encoder import TREncoder
+from terel.config.config import Config
+from terel.modules.encoder import TeReLEncoder
 
 
 class EncoderTrainer(pl.LightningModule):
-    def __init__(self, ident, cfg: Config, encoder: TREncoder, pre_model: nn.Module|None=None):
+    def __init__(self, ident, cfg: Config, encoder: TeReLEncoder, pre_model: nn.Module|None=None):
         super().__init__()
         self.cfg = cfg
         self.ident = ident
@@ -146,4 +146,3 @@ class SeqEncoderTrainer(EncoderTrainer):
 
     def training_step(self, batch, batch_idx):
         return super().training_step(batch, batch_idx)
-

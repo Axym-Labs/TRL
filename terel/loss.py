@@ -2,13 +2,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from trl.config.config import TRLossConfig
-from trl.store import MappingStore
-from trl.representation_metrics import EmtpyRepresentationMetricsTracker, RepresentationMetricsTracker
+from terel.config.config import TeReLLossConfig
+from terel.store import MappingStore
+from terel.representation_metrics import EmtpyRepresentationMetricsTracker, RepresentationMetricsTracker
 
 
-class TRLoss(nn.Module):
-    def __init__(self, num_features: int, cfg: TRLossConfig, rep_tracker, chunk_size: int = None):
+class TeReLLoss(nn.Module):
+    def __init__(self, num_features: int, cfg: TeReLLossConfig, rep_tracker, chunk_size: int = None):
         super().__init__()
         self.cfg = cfg
         self.chunk_size = chunk_size
@@ -204,7 +204,7 @@ class TRLoss(nn.Module):
         return self.rep_tracker.scalar_metrics()
     
 
-class TRSeqLoss(TRLoss):
+class TeReLSeqLoss(TeReLLoss):
     "TCLoss for training on sequence tasks, ie where inputs are of shape (batch_size, sequence_length, latent_dimension)"
     def sim_loss(self, last_z, z_centered):
         # Sequence mode already uses temporal adjacency inside each sample,
@@ -224,7 +224,7 @@ class TRSeqLoss(TRLoss):
     def std_loss(self, var_stat, z_centered):
         std_loss_pn = super().std_loss(var_stat, z_centered)
         # Optional fix: avoid implicit scaling with sequence length S.
-        # TRLoss.forward does mean(dim=0).sum() afterward.
+        # TeReLLoss.forward does mean(dim=0).sum() afterward.
         if self.cfg.sequence_std_mean_over_time and std_loss_pn.ndim == 3:
             # Keep expected magnitude comparable to legacy reduction by
             # compensating for averaging across time.

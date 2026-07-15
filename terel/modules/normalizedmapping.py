@@ -2,10 +2,10 @@
 import torch
 import torch.nn as nn
 
-from trl.config.config import Config
-from trl.loss import TRLoss, TRSeqLoss
-from trl.store import MappingStore
-from trl.representation_metrics import RepresentationMetricsTracker
+from terel.config.config import Config
+from terel.loss import TeReLLoss, TeReLSeqLoss
+from terel.store import MappingStore
+from terel.representation_metrics import RepresentationMetricsTracker
 
 class NormalizedMapping(nn.Module):
     """
@@ -19,8 +19,8 @@ class NormalizedMapping(nn.Module):
         self.lat = nn.Linear(out_dim, out_dim, bias=False)
         
         rep_tracker = RepresentationMetricsTracker(out_dim, cfg.head_out_dim) if cfg.head_task == "classification" and cfg.track_representations else None
-        loss_cls = TRSeqLoss if cfg.problem_type == "sequence" else TRLoss
-        self.criterion = loss_cls(out_dim, cfg.trloss_config, rep_tracker, chunk_size=cfg.data_config.chunk_size)
+        loss_cls = TeReLSeqLoss if cfg.problem_type == "sequence" else TeReLLoss
+        self.criterion = loss_cls(out_dim, cfg.terel_loss_config, rep_tracker, chunk_size=cfg.data_config.chunk_size)
         self.store = MappingStore(cfg.store_config, out_dim, cfg.problem_type)
 
     def forward(self, x: torch.Tensor):
@@ -47,5 +47,4 @@ class NormalizedMapping(nn.Module):
         lat_params = self.lat.parameters()
 
         return layer_params, lat_params
-
 

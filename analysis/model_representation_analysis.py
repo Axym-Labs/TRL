@@ -10,12 +10,12 @@ import torch
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from trl.config.config import BatchNormConfig, Config, EncoderConfig
-from trl.config.configurations import finish_setup
-from trl.datasets.mnist import build_dataloaders
-from trl.modules.encoder import TREncoder, TRSeqEncoder, TRSeqElementwiseEncoder
-from trl.trainer.encoder import EncoderTrainer, SeqEncoderTrainer
-from trl.trainer.head import ClassifierHead, PredictorHead
+from terel.config.config import BatchNormConfig, Config, EncoderConfig
+from terel.config.configurations import finish_setup
+from terel.datasets.mnist import build_dataloaders
+from terel.modules.encoder import TeReLEncoder, TeReLSeqEncoder, TeReLSeqElementwiseEncoder
+from terel.trainer.encoder import EncoderTrainer, SeqEncoderTrainer
+from terel.trainer.head import ClassifierHead, PredictorHead
 
 
 def load_cfg(hparams_path: Path) -> Config:
@@ -30,9 +30,9 @@ def load_cfg(hparams_path: Path) -> Config:
             for k, v in val.items():
                 setattr(cfg.data_config, k, v)
             continue
-        if key == "trloss_config":
+        if key == "terel_loss_config":
             for k, v in val.items():
-                setattr(cfg.trloss_config, k, v)
+                setattr(cfg.terel_loss_config, k, v)
             continue
         if key == "store_config":
             for k, v in val.items():
@@ -597,9 +597,9 @@ def main():
             finish_setup(cfg)
 
     encoder_cfg = cfg.encoders[0]
-    encoder_cls = TREncoder
+    encoder_cls = TeReLEncoder
     if cfg.problem_type == "sequence":
-        encoder_cls = TRSeqEncoder if cfg.sequence_recurrent_encoder else TRSeqElementwiseEncoder
+        encoder_cls = TeReLSeqEncoder if cfg.sequence_recurrent_encoder else TeReLSeqElementwiseEncoder
     trainer_cls = SeqEncoderTrainer if cfg.problem_type == "sequence" else EncoderTrainer
     encoder = encoder_cls(cfg, encoder_cfg)
     encoder_trainer = trainer_cls("e0", cfg, encoder, pre_model=None)

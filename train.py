@@ -1,8 +1,8 @@
 import torch
 import torch.nn.functional as F
 
-from trl import run_training
-from trl.config.configurations import *
+from terel import run_training
+from terel.config.configurations import *
 
 if __name__ == "__main__":
     cfg = Config()

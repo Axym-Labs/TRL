@@ -10,9 +10,9 @@ import torch
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from trl import run_training
-from trl.config.config import Config
-from trl.config.configurations import finish_setup, standard_setup
+from terel import run_training
+from terel.config.config import Config
+from terel.config.configurations import finish_setup, standard_setup
 
 
 def base_cfg(epochs: int, head_epochs: int) -> Config:
@@ -68,8 +68,8 @@ def set_sgd(cfg: Config, lr: float, momentum: float = 0.0):
 def enable_point1_cov_direct(cfg: Config):
     # Point 1 proxy: decorrelation from batch covariance penalty only,
     # remove learned lateral-target matching pressure.
-    cfg.trloss_config.use_cov_directly = True
-    cfg.trloss_config.lat_coeff = 0.0
+    cfg.terel_loss_config.use_cov_directly = True
+    cfg.terel_loss_config.lat_coeff = 0.0
 
 
 def make_variants():
@@ -130,8 +130,8 @@ def run_matrix(epochs: int, head_epochs: int, seed: int):
             "val_error": 1.0 - float(val_acc),
             "encoder_optim": str(cfg.encoder_optim),
             "lr": cfg.lr,
-            "use_cov_directly": bool(cfg.trloss_config.use_cov_directly),
-            "lat_coeff": float(cfg.trloss_config.lat_coeff),
+            "use_cov_directly": bool(cfg.terel_loss_config.use_cov_directly),
+            "lat_coeff": float(cfg.terel_loss_config.lat_coeff),
             "encoder_grad_clip_norm": float(cfg.encoder_grad_clip_norm),
             "encoder_lat_lr_factor": float(cfg.encoder_lat_lr_factor),
         }

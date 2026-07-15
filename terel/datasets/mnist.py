@@ -13,8 +13,8 @@ import torchvision
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 
-from trl.config.config import DataConfig
-from trl.data import CoherentSampler
+from terel.config.config import DataConfig
+from terel.data import CoherentSampler
 
 
 @dataclass
@@ -720,4 +720,3 @@ def build_dataloaders(cfg: DataConfig, problem_type: str):
     if name == "pamap2":
         return _build_pamap2_loaders(cfg, problem_type)
     raise ValueError(f"Unknown dataset_name='{cfg.dataset_name}'.")
-

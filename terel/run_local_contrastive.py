@@ -8,10 +8,10 @@ import torch
 import torch.nn.functional as F
 from pytorch_lightning.loggers import CSVLogger, WandbLogger
 
-from trl.config.config import Config
-from trl.datasets.mnist import build_dataloaders
-from trl.modules.encoder import TREncoder
-from trl.trainer.head import ClassifierHead
+from terel.config.config import Config
+from terel.datasets.mnist import build_dataloaders
+from terel.modules.encoder import TeReLEncoder
+from terel.trainer.head import ClassifierHead
 
 
 def supervised_contrastive_loss(z: torch.Tensor, y: torch.Tensor, temperature: float = 0.1) -> torch.Tensor:
@@ -52,7 +52,7 @@ def supervised_contrastive_loss(z: torch.Tensor, y: torch.Tensor, temperature: f
 
 
 class LocalContrastiveTrainer(pl.LightningModule):
-    def __init__(self, ident: str, cfg: Config, encoder: TREncoder, pre_model=None):
+    def __init__(self, ident: str, cfg: Config, encoder: TeReLEncoder, pre_model=None):
         super().__init__()
         self.ident = ident
         self.cfg = cfg
@@ -125,7 +125,7 @@ def run(cfg: Config, return_metrics: bool = False):
             logger=trainer_logger,
             enable_checkpointing=False,
         )
-        encoder = TREncoder(cfg, encoder_cfg)
+        encoder = TeReLEncoder(cfg, encoder_cfg)
         module = LocalContrastiveTrainer(f"e{i}", cfg, encoder, pre_model=pre_model)
         trainer.fit(module, train_loader)
         pre_model = module

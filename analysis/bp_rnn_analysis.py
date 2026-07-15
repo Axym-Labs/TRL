@@ -11,10 +11,10 @@ import torch
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from trl.config.config import Config
-from trl.config.configurations import finish_setup, mnist_rnn_setup
-from trl.datasets.mnist import build_dataloaders
-from trl.run_backprop import BPSeqLinearPredictor, BPSeqMLPPredictor
+from terel.config.config import Config
+from terel.config.configurations import finish_setup, mnist_rnn_setup
+from terel.datasets.mnist import build_dataloaders
+from terel.run_backprop import BPSeqLinearPredictor, BPSeqMLPPredictor
 
 
 def setup_plot_style():

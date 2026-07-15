@@ -9,9 +9,9 @@ import torch
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from trl.config.config import Config
-from trl.config.configurations import finish_setup
-from trl import run_backprop
+from terel.config.config import Config
+from terel.config.configurations import finish_setup
+from terel import run_backprop
 
 
 def base_cfg(epochs: int, seed: int) -> Config:

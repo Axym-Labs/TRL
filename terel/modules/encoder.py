@@ -3,12 +3,12 @@ import torch.nn as nn
 import contextlib
 from typing import Tuple
 
-from trl.config.config import Config, EncoderConfig
-from trl.modules.batchnorm import ConfigurableBatchNorm
-from trl.modules.normalizedmapping import NormalizedMapping
+from terel.config.config import Config, EncoderConfig
+from terel.modules.batchnorm import ConfigurableBatchNorm
+from terel.modules.normalizedmapping import NormalizedMapping
 
 
-class TREncoder(nn.Module):
+class TeReLEncoder(nn.Module):
     def __init__(self, cfg: Config, encoder_cfg: EncoderConfig):
         super().__init__()
         self.enc_cfg = encoder_cfg
@@ -74,7 +74,7 @@ class TREncoder(nn.Module):
         return x
         
 
-class TRSeqEncoder(TREncoder):
+class TeReLSeqEncoder(TeReLEncoder):
     def __init__(self, cfg: Config, encoder_cfg: EncoderConfig,):
         super().__init__(cfg, encoder_cfg)
         # keep the second dimension - the sequence dimension 
@@ -90,7 +90,7 @@ class TRSeqEncoder(TREncoder):
         return torch.cat([x[:, t, :], hidden], dim=1)
     
     def gather_layer_activations(self, x: torch.Tensor, no_grad=True, layer_indices=None) -> list[torch.Tensor]:
-        raise NotImplementedError("gather_layer_activations is not implemented for TRSeqEncoder yet")
+        raise NotImplementedError("gather_layer_activations is not implemented for TeReLSeqEncoder yet")
 
     def acts_before_layer(self, prepared_input, layer_idx: int, no_grad: bool = True) -> torch.Tensor:
         x, hidden = prepared_input
@@ -121,7 +121,7 @@ class TRSeqEncoder(TREncoder):
         return act
 
 
-class TRSeqElementwiseEncoder(TREncoder):
+class TeReLSeqElementwiseEncoder(TeReLEncoder):
     """
     Sequence encoder without recurrent hidden state:
     applies the same feedforward mapping to each timestep independently.

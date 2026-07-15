@@ -1,7 +1,7 @@
 import torch
 from dataclasses import dataclass
 
-from trl.config.config import StoreConfig
+from terel.config.config import StoreConfig
 
 
 @dataclass

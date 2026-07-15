@@ -2,8 +2,8 @@
 import torch
 import torch.nn as nn
 
-from trl.store import MappingStore
-from trl.config.config import BatchNormConfig
+from terel.store import MappingStore
+from terel.config.config import BatchNormConfig
 
 
 class ConfigurableBatchNorm(nn.Module):
@@ -40,5 +40,4 @@ class ConfigurableBatchNorm(nn.Module):
                 var = var.detach()
             out = out / torch.sqrt(var + self.bn_cfg.eps)
         return out
-
 

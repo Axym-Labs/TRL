@@ -3,11 +3,11 @@ import torch
 import pytorch_lightning as pl
 from torch import nn as nn
 
-from trl.config.config import Config
-from trl.trainer.encoder import EncoderTrainer, SeqEncoderTrainer
-from trl.modules.temporal_fusion import build_temporal_fusion
-from trl.loss import TRSeqLoss
-from trl.store import MappingStore
+from terel.config.config import Config
+from terel.trainer.encoder import EncoderTrainer, SeqEncoderTrainer
+from terel.modules.temporal_fusion import build_temporal_fusion
+from terel.loss import TeReLSeqLoss
+from terel.store import MappingStore
 
 
 def _build_head_optimizer(cfg: Config, param_groups):
@@ -83,7 +83,7 @@ class PredictorHead(RegressorHead):
 
         super().__init__(encoder, cfg, out_dim, **kwargs)
         # Sequence path uses the final encoder representation tensor.
-        # Gathered layer activations are not implemented for TRSeqEncoder.
+        # Gathered layer activations are not implemented for TeReLSeqEncoder.
         self.rep_dim = self.encoder.encoder.rep_dim
         self.mapping = nn.Linear(self.rep_dim, out_dim)
         self.temporal_fusion = build_temporal_fusion(
@@ -92,12 +92,12 @@ class PredictorHead(RegressorHead):
             alpha=cfg.temporal_fusion_alpha,
             hidden_dim=cfg.temporal_fusion_hidden_dim,
         )
-        self.temporal_fusion_trl_coeff = cfg.temporal_fusion_trl_coeff
+        self.temporal_fusion_terel_coeff = cfg.temporal_fusion_terel_coeff
         self.fusion_criterion = None
         self.fusion_lat = None
         self.fusion_store = None
-        if self.temporal_fusion is not None and self.temporal_fusion_trl_coeff > 0.0:
-            self.fusion_criterion = TRSeqLoss(self.rep_dim, cfg.trloss_config, rep_tracker=None)
+        if self.temporal_fusion is not None and self.temporal_fusion_terel_coeff > 0.0:
+            self.fusion_criterion = TeReLSeqLoss(self.rep_dim, cfg.terel_loss_config, rep_tracker=None)
             self.fusion_lat = nn.Linear(self.rep_dim, self.rep_dim, bias=False)
             self.fusion_store = MappingStore(cfg.store_config, self.rep_dim, cfg.problem_type)
 
@@ -123,9 +123,9 @@ class PredictorHead(RegressorHead):
             self.fusion_store.update_post(h_seq)
             vicreg_loss, lateral_loss, _metrics = self.fusion_criterion(h_seq, lateral=self.fusion_lat, store=self.fusion_store)
             self.fusion_store.update_last_z(h_seq)
-            fusion_trl_loss = vicreg_loss + lateral_loss
-            self.log("train_fusion_trl_loss", fusion_trl_loss, prog_bar=True)
-            loss = loss + self.temporal_fusion_trl_coeff * fusion_trl_loss
+            fusion_terel_loss = vicreg_loss + lateral_loss
+            self.log("train_fusion_terel_loss", fusion_terel_loss, prog_bar=True)
+            loss = loss + self.temporal_fusion_terel_coeff * fusion_terel_loss
         self.log_metric(out, y, True)
         self.log("train_total_loss", loss, prog_bar=True)
         return loss
@@ -146,5 +146,4 @@ class PredictorHead(RegressorHead):
         if self.fusion_lat is not None:
             param_groups.append({"params": self.fusion_lat.parameters(), "lr": self.lr})
         return _build_head_optimizer(self.cfg, param_groups)
-
 

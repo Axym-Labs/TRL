@@ -10,10 +10,10 @@ import torch
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from trl import run_backprop, run_training
-from trl.config.config import Config
-from trl.config.configurations import finish_setup, pamap2_setup, temporal_coherence_ordering
-from trl.datasets.mnist import build_dataloaders
+from terel import run_backprop, run_training
+from terel.config.config import Config
+from terel.config.configurations import finish_setup, pamap2_setup, temporal_coherence_ordering
+from terel.datasets.mnist import build_dataloaders
 
 
 def base_cfg(epochs: int, seed: int):
@@ -26,7 +26,7 @@ def base_cfg(epochs: int, seed: int):
     cfg.epochs = epochs
     cfg.head_epochs = epochs
     pamap2_setup(cfg)
-    # Keep TRL-S comparisons on the same head policy (last layer only).
+    # Keep TeReL-S comparisons on the same head policy (last layer only).
     cfg.head_use_layers = False
     return cfg
 
@@ -95,7 +95,7 @@ def run_variant(name: str, runner: str, cfg: Config):
     if runner == "bp":
         val_acc = run_backprop.run(cfg_local)
         log_name = f"{cfg_local.run_name}_bp"
-    elif runner == "trls":
+    elif runner == "terels":
         val_acc = run_training.run(cfg_local)
         log_name = cfg_local.run_name
     else:
@@ -145,10 +145,10 @@ def main():
     temporal_coherence_ordering(cfg_bp_ord, enabled=True)
     rows.append(run_variant("pamap2_bp_ordered", "bp", cfg_bp_ord))
 
-    # 3) TRL-S with ordered temporal data.
-    cfg_trls_ord = base_cfg(args.epochs, args.seed)
-    temporal_coherence_ordering(cfg_trls_ord, enabled=True)
-    rows.append(run_variant("pamap2_trls_ordered", "trls", cfg_trls_ord))
+    # 3) TeReL-S with ordered temporal data.
+    cfg_terels_ord = base_cfg(args.epochs, args.seed)
+    temporal_coherence_ordering(cfg_terels_ord, enabled=True)
+    rows.append(run_variant("pamap2_terels_ordered", "terels", cfg_terels_ord))
 
     out_dir = Path("output") / "metrics"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -164,4 +164,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

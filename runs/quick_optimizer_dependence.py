@@ -9,9 +9,9 @@ import torch
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from trl import run_training
-from trl.config.config import Config
-from trl.config.configurations import finish_setup, standard_setup
+from terel import run_training
+from terel.config.config import Config
+from terel.config.configurations import finish_setup, standard_setup
 
 
 def base_cfg(epochs: int, head_epochs: int) -> Config:
@@ -191,8 +191,8 @@ def run_quick(seed: int, epochs: int, head_epochs: int, out_name: str, only_vari
             "lr": cfg.lr,
             "encoder_grad_clip_norm": float(cfg.encoder_grad_clip_norm),
             "encoder_lat_lr_factor": float(cfg.encoder_lat_lr_factor),
-            "use_cov_directly": bool(cfg.trloss_config.use_cov_directly),
-            "lat_coeff": float(cfg.trloss_config.lat_coeff),
+            "use_cov_directly": bool(cfg.terel_loss_config.use_cov_directly),
+            "lat_coeff": float(cfg.terel_loss_config.lat_coeff),
         }
         row.update(latest_metrics(cfg.run_name))
         rows.append(row)

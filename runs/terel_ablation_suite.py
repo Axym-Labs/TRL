@@ -7,9 +7,9 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from trl import run_training, run_backprop, run_local_contrastive
-from trl.config.config import Config
-from trl.config.configurations import (
+from terel import run_training, run_backprop, run_local_contrastive
+from terel.config.config import Config
+from terel.config.configurations import (
     finish_setup,
     standard_setup,
     last_layer_head,
@@ -30,12 +30,12 @@ def base_cfg(epochs: int, head_epochs: int):
     return cfg
 
 
-def run_variant(name: str, cfg: Config, seed: int = 42, runner: str = "trl"):
+def run_variant(name: str, cfg: Config, seed: int = 42, runner: str = "terel"):
     cfg_local = deepcopy(cfg)
     cfg_local.seed = seed
     cfg_local.run_name = f"{cfg_local.run_name} {name}"
     finish_setup(cfg_local)
-    if runner == "trl":
+    if runner == "terel":
         val_acc = run_training.run(cfg_local)
     elif runner == "bp":
         val_acc = run_backprop.run(cfg_local)
@@ -56,63 +56,63 @@ if __name__ == "__main__":
 
     results = []
 
-    def trl_base():
+    def terel_base():
         cfg = base_cfg(args.epochs, args.head_epochs)
         standard_setup(cfg)
         return cfg
 
-    def trls_base():
+    def terels_base():
         return base_cfg(args.epochs, args.head_epochs)
 
     variants = [
-        # TRL family
-        ("trl_baseline", lambda: trl_base(), "trl"),
-        ("trl_last_layer_head", lambda: last_layer_head(trl_base()), "trl"),
-        ("trl_trace", lambda: enable_trace(trl_base(), decay=0.9), "trl"),
-        ("trl_lateral_shift", lambda: enable_lateral_shift(trl_base()), "trl"),
-        ("trl_trace_fast", lambda: enable_trace(trl_base(), decay=args.trace_decay_fast), "trl"),
-        ("trl_lateral_shift_cov_target", lambda: enable_lateral_shift_cov_target(enable_lateral_shift(trl_base())), "trl"),
+        # TeReL family
+        ("terel_baseline", lambda: terel_base(), "terel"),
+        ("terel_last_layer_head", lambda: last_layer_head(terel_base()), "terel"),
+        ("terel_trace", lambda: enable_trace(terel_base(), decay=0.9), "terel"),
+        ("terel_lateral_shift", lambda: enable_lateral_shift(terel_base()), "terel"),
+        ("terel_trace_fast", lambda: enable_trace(terel_base(), decay=args.trace_decay_fast), "terel"),
+        ("terel_lateral_shift_cov_target", lambda: enable_lateral_shift_cov_target(enable_lateral_shift(terel_base())), "terel"),
         (
-            "trl_trace_lateral_shift_fast_cov",
+            "terel_trace_lateral_shift_fast_cov",
             lambda: enable_lateral_shift_cov_target(
-                enable_lateral_shift(enable_trace(trl_base(), decay=args.trace_decay_fast))
+                enable_lateral_shift(enable_trace(terel_base(), decay=args.trace_decay_fast))
             ),
-            "trl",
+            "terel",
         ),
         (
-            "trl_trace_lateral_shift_last_layer",
+            "terel_trace_lateral_shift_last_layer",
             lambda: last_layer_head(
                 enable_lateral_shift_cov_target(
-                    enable_lateral_shift(enable_trace(trl_base(), decay=args.trace_decay_fast))
+                    enable_lateral_shift(enable_trace(terel_base(), decay=args.trace_decay_fast))
                 )
             ),
-            "trl",
+            "terel",
         ),
-        # TRL-S family
-        ("trls_baseline", lambda: trls_base(), "trl"),
-        ("trls_last_layer_head", lambda: last_layer_head(trls_base()), "trl"),
+        # TeReL-S family
+        ("terels_baseline", lambda: terels_base(), "terel"),
+        ("terels_last_layer_head", lambda: last_layer_head(terels_base()), "terel"),
         (
-            "trls_shift_shiftcov_last_layer",
+            "terels_shift_shiftcov_last_layer",
             lambda: last_layer_head(
-                enable_lateral_shift_cov_target(enable_lateral_shift(trls_base()))
+                enable_lateral_shift_cov_target(enable_lateral_shift(terels_base()))
             ),
-            "trl",
+            "terel",
         ),
         (
-            "trls_tracefast_shift_shiftcov_last_layer",
+            "terels_tracefast_shift_shiftcov_last_layer",
             lambda: last_layer_head(
                 enable_lateral_shift_cov_target(
-                    enable_lateral_shift(enable_trace(trls_base(), decay=args.trace_decay_fast))
+                    enable_lateral_shift(enable_trace(terels_base(), decay=args.trace_decay_fast))
                 )
             ),
-            "trl",
+            "terel",
         ),
         # Backprop baselines
-        ("bp_all_layers_head", lambda: trls_base(), "bp"),
-        ("bp_last_layer_head", lambda: last_layer_head(trls_base()), "bp"),
+        ("bp_all_layers_head", lambda: terels_base(), "bp"),
+        ("bp_last_layer_head", lambda: last_layer_head(terels_base()), "bp"),
         # Local supervised contrastive baselines
-        ("local_supcon_all_layers_head", lambda: trls_base(), "local_supcon"),
-        ("local_supcon_last_layer_head", lambda: last_layer_head(trls_base()), "local_supcon"),
+        ("local_supcon_all_layers_head", lambda: terels_base(), "local_supcon"),
+        ("local_supcon_last_layer_head", lambda: last_layer_head(terels_base()), "local_supcon"),
     ]
 
     for name, build_cfg_fn, runner in variants:
@@ -121,7 +121,7 @@ if __name__ == "__main__":
         results.append({"variant": name, "val_acc": acc, "val_error": 1.0 - acc})
         print(f"{name}: {acc:.4f}")
 
-    out_path = Path("analysis_outputs") / "trl_ablation_results.csv"
+    out_path = Path("analysis_outputs") / "terel_ablation_results.csv"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=["variant", "val_acc", "val_error"])

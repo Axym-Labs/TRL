@@ -11,8 +11,8 @@ from tqdm import trange
 import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from trl import run_training
-from trl.config.configurations import mnist_backprop_comparison_tuning
+from terel import run_training
+from terel.config.configurations import mnist_backprop_comparison_tuning
 
 N_TRIALS = 50
 
@@ -37,10 +37,10 @@ def sample_trial():
 def apply_to_cfg(cfg, s):
     cfg = deepcopy(cfg)
     cfg.lr = s["lr"]
-    cfg.trloss_config.sim_coeff = s["sim_coeff"]
-    cfg.trloss_config.std_coeff = s["std_coeff"]
-    cfg.trloss_config.lat_coeff = s["lat_coeff"]
-    cfg.trloss_config.cov_coeff = s["cov_coeff"]
+    cfg.terel_loss_config.sim_coeff = s["sim_coeff"]
+    cfg.terel_loss_config.std_coeff = s["std_coeff"]
+    cfg.terel_loss_config.lat_coeff = s["lat_coeff"]
+    cfg.terel_loss_config.cov_coeff = s["cov_coeff"]
     return cfg
 
 def main():

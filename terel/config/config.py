@@ -16,7 +16,7 @@ class BatchNormConfig:
     detach_batch_statistics: bool = False
 
 @dataclass
-class TRLossConfig:
+class TeReLLossConfig:
     var_target_init: str = "ones"  # options: "ones", "rand"
     var_sample_factor: float = 1.0
     bidirectional_variance_loss: bool = False
@@ -122,7 +122,7 @@ class Config:
     # sequence -> sequential setup
     problem_type: str = "pass"
     # sequence encoder mode:
-    # True -> recurrent TRSeqEncoder (legacy),
+    # True -> recurrent TeReLSeqEncoder (legacy),
     # False -> elementwise per-timestep encoder (proposal setup).
     sequence_recurrent_encoder: bool = True
     # classification or regression
@@ -134,7 +134,7 @@ class Config:
     temporal_fusion_mode: str = "none"
     temporal_fusion_alpha: float = 0.5
     temporal_fusion_hidden_dim: int = 0
-    temporal_fusion_trl_coeff: float = 1.0
+    temporal_fusion_terel_coeff: float = 1.0
 
     # different encoders are trained in sequence
     # within encoders, layers can be trained concurrently
@@ -147,7 +147,7 @@ class Config:
     encoder_lat_lr_factor: float = 0.03
 
     data_config: DataConfig = field(default_factory=DataConfig)
-    trloss_config: TRLossConfig = field(default_factory=TRLossConfig)
+    terel_loss_config: TeReLLossConfig = field(default_factory=TeReLLossConfig)
     batchnorm_config: BatchNormConfig|None = None
     store_config: StoreConfig = field(default_factory=StoreConfig)
 
@@ -160,4 +160,3 @@ class Config:
             self.head_use_layers = [i for i in range(len(self.encoders[-1].layer_dims))]
         elif self.head_use_layers is False:
             self.head_use_layers = None
-

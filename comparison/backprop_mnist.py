@@ -10,10 +10,10 @@ from pytorch_lightning.loggers import WandbLogger
 import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from trl.config.config import Config, BatchNormConfig
-from trl.config.configurations import minimal_batchnorm
-from trl.modules.batchnorm import ConfigurableBatchNorm
-from trl.store import MappingStore
+from terel.config.config import Config, BatchNormConfig
+from terel.config.configurations import minimal_batchnorm
+from terel.modules.batchnorm import ConfigurableBatchNorm
+from terel.store import MappingStore
 
 cfg = Config()
 

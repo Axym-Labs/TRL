@@ -12,8 +12,8 @@ import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from comparison.backprop_mnist import run as run_backprop_mnist
-from trl.config.configurations import mnist_backprop_comparison_tuning
-from runs.trl_tune_params import N_TRIALS
+from terel.config.configurations import mnist_backprop_comparison_tuning
+from runs.terel_tune_params import N_TRIALS
 
 
 def sample_lr(low=1e-5, high=1e-1):

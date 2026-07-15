@@ -12,11 +12,11 @@ import torch
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger, CSVLogger
 
-from trl.config.config import Config
-from trl.datasets.mnist import build_dataloaders
-from trl.trainer.head import ClassifierHead, RegressorHead, PredictorHead
-from trl.modules.encoder import TREncoder, TRSeqEncoder, TRSeqElementwiseEncoder
-from trl.trainer.encoder import EncoderTrainer, SeqEncoderTrainer
+from terel.config.config import Config
+from terel.datasets.mnist import build_dataloaders
+from terel.trainer.head import ClassifierHead, RegressorHead, PredictorHead
+from terel.modules.encoder import TeReLEncoder, TeReLSeqEncoder, TeReLSeqElementwiseEncoder
+from terel.trainer.encoder import EncoderTrainer, SeqEncoderTrainer
 
 def run(cfg: Config, return_metrics: bool = False):
     random.seed(cfg.seed)
@@ -45,13 +45,13 @@ def run(cfg: Config, return_metrics: bool = False):
 
         if cfg.problem_type == "sequence":
             if cfg.sequence_recurrent_encoder:
-                encoder_cls = TRSeqEncoder
+                encoder_cls = TeReLSeqEncoder
                 encoder_trainer_cls = SeqEncoderTrainer
             else:
-                encoder_cls = TRSeqElementwiseEncoder
+                encoder_cls = TeReLSeqElementwiseEncoder
                 encoder_trainer_cls = EncoderTrainer
         else:
-            encoder_cls = TREncoder
+            encoder_cls = TeReLEncoder
             encoder_trainer_cls = EncoderTrainer
         encoder = encoder_cls(cfg, encoder_cfg)
         encoder_trainer = encoder_trainer_cls(f"e{i}", cfg, encoder, pre_model=pre_model)

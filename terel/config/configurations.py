@@ -1,7 +1,7 @@
 from functools import wraps
 import torch
 
-from trl.config.config import Config, EncoderConfig, BatchNormConfig
+from terel.config.config import Config, EncoderConfig, BatchNormConfig
 
 def change_configuration(fn):
     @wraps(fn)
@@ -32,9 +32,9 @@ def batchless(conf: Config):
     conf.store_config.post_stats_momentum = 0.99 # 0.9994
     conf.store_config.cov_momentum = 0.99 # 0.9994
     conf.lr /= 50
-    conf.trloss_config.std_coeff /= 2
+    conf.terel_loss_config.std_coeff /= 2
     conf.store_config.batchless_updates = True
-    conf.trloss_config.consider_last_batch_z = True
+    conf.terel_loss_config.consider_last_batch_z = True
     if conf.batchnorm_config is not None:
         conf.batchnorm_config.use_batch_statistics_training = False
 
@@ -94,7 +94,7 @@ def ff_scale_network(conf: Config):
     conf.encoders = [
         EncoderConfig(((28*28, 2000), *[(2000, 2000) for _ in range(3)])),
     ]
-    conf.trloss_config.cov_matrix_sparsity = 0.5
+    conf.terel_loss_config.cov_matrix_sparsity = 0.5
 
 @change_configuration
 def eqprop_scale_network(conf: Config):
@@ -107,11 +107,11 @@ def standard_setup(conf: Config):
     conf.head_use_layers = True
     conf.encoder_optim = torch.optim.SGD
     conf.train_encoder_concurrently = False
-    conf.trloss_config.use_chunk_paritions = True
+    conf.terel_loss_config.use_chunk_paritions = True
     # use_cov_directly is not beneficial
     # counteracts doulble-z-term in MSE which favors collapse
-    conf.trloss_config.detach_previous = False
-    conf.trloss_config.std_coeff *= 2 # because detach_previous=False
+    conf.terel_loss_config.detach_previous = False
+    conf.terel_loss_config.std_coeff *= 2 # because detach_previous=False
 
 @change_configuration
 def old_setup(conf: Config):
@@ -124,32 +124,32 @@ def last_layer_head(conf: Config):
 
 @change_configuration
 def enable_trace(conf: Config, decay: float = 0.9):
-    conf.trloss_config.use_trace_activation = True
-    conf.trloss_config.trace_decay = decay
+    conf.terel_loss_config.use_trace_activation = True
+    conf.terel_loss_config.trace_decay = decay
     conf.store_config.trace_momentum = decay
 
 @change_configuration
 def enable_lateral_shift(conf: Config):
-    conf.trloss_config.lateral_shift = True
+    conf.terel_loss_config.lateral_shift = True
 
 @change_configuration
 def enable_lateral_shift_cov_target(conf: Config):
-    conf.trloss_config.lateral_shift_cov_target = True
+    conf.terel_loss_config.lateral_shift_cov_target = True
 
 @change_configuration
 def aug_and_rbn_setup(conf: Config):
     conf.data_config.encoder_augment = True
     conf.batchnorm_config = BatchNormConfig()
 
-    conf.trloss_config.std_coeff /= 2 # because of batchnorm
+    conf.terel_loss_config.std_coeff /= 2 # because of batchnorm
     conf.lr = 4e-4
 
 @change_configuration
 def sgd_optim(conf: Config):
     conf.encoder_optim = torch.optim.SGD
-    conf.trloss_config.use_cov_directly = True
+    conf.terel_loss_config.use_cov_directly = True
     conf.encoder_optim = torch.optim.SGD
-    conf.trloss_config.std_coeff *= 2
+    conf.terel_loss_config.std_coeff *= 2
 
 @change_configuration
 def temporal_coherence_ordering(conf: Config, enabled: bool = True):
