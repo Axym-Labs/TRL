@@ -1,0 +1,85 @@
+protocol_version: "1.2"
+protocol_sha256: "58a672df68f60d535d22c9ef367a203eadc8d456bfeb07673b6ea19b59bf537f"
+seeds: [101, 202, 303]
+
+probe:
+  epochs: 30
+  batch_size: 2048
+  optimizer: adamw
+  learning_rate: 0.003
+  weight_decay: 0.0001
+
+datasets:
+  mnist:
+    data_root: /home/davwis/main/data/mnist
+    num_classes: 10
+    primary_metric: metrics.accuracy
+    collapse_threshold: 0.05
+    encoder_base:
+      method: terel_local
+      hidden_dims: [512, 256]
+      activation: relu
+      epochs: 10
+      batch_size: 256
+      order_mode: class_chunks
+      chunk_size: 16
+      optimizer: adamw
+      weight_decay: 0.0001
+      similarity_coefficient: 1.0
+      variance_target: 1.0
+      statistics_momentum: 0.9
+      lateral_momentum: 0.99
+    configurations:
+      - id: adamw-3e4-v2.5-c1
+        learning_rate: 0.0003
+        variance_coefficient: 2.5
+        covariance_coefficient: 1.0
+      - id: adamw-1e3-v2.5-c1
+        learning_rate: 0.001
+        variance_coefficient: 2.5
+        covariance_coefficient: 1.0
+      - id: adamw-3e4-v5-c1
+        learning_rate: 0.0003
+        variance_coefficient: 5.0
+        covariance_coefficient: 1.0
+      - id: adamw-3e4-v2.5-c0.5
+        learning_rate: 0.0003
+        variance_coefficient: 2.5
+        covariance_coefficient: 0.5
+
+  pamap2:
+    data_root: /home/davwis/main/data/pamap2
+    num_classes: 12
+    primary_metric: metrics.macro_f1
+    collapse_threshold: 0.05
+    encoder_base:
+      method: terel_local
+      hidden_dims: [512, 256]
+      activation: relu
+      epochs: 10
+      batch_size: 512
+      order_mode: chronological
+      chunk_size: 16
+      optimizer: adamw
+      weight_decay: 0.0001
+      similarity_coefficient: 1.0
+      variance_target: 1.0
+      statistics_momentum: 0.9
+      lateral_momentum: 0.99
+    configurations:
+      - id: adamw-3e4-v2.5-c1
+        learning_rate: 0.0003
+        variance_coefficient: 2.5
+        covariance_coefficient: 1.0
+      - id: adamw-1e3-v2.5-c1
+        learning_rate: 0.001
+        variance_coefficient: 2.5
+        covariance_coefficient: 1.0
+      - id: adamw-3e4-v5-c1
+        learning_rate: 0.0003
+        variance_coefficient: 5.0
+        covariance_coefficient: 1.0
+      - id: adamw-3e4-v2.5-c0.5
+        learning_rate: 0.0003
+        variance_coefficient: 2.5
+        covariance_coefficient: 0.5
