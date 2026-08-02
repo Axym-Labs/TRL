@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "terel-local-learning"
+version = "0.2.0"
+description = "Corrected and guarded TeReL experiments"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "matplotlib==3.11.1",
+  "numpy==2.5.1",
+  "pandas==3.0.5",
+  "PyYAML==6.0.3",
+  "scikit-learn==1.9.0",
+  "scipy==1.18.0",
+  "torch==2.13.0",
+  "torchvision==0.28.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest==9.1.1"]
+
+[project.scripts]
+terel-resubmission = "terel.resubmission.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["terel*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

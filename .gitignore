@@ -4,6 +4,7 @@
 lightning_logs
 wandb
 __pycache__/
+*.egg-info/
 saved_models
 data
 data/*
