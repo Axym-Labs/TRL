@@ -104,7 +104,7 @@ class MNISTModelReLU(pl.LightningModule):
         if self.v == "1":
             return self.forward_v1(x)
         elif self.v == "2":
-            return self.forward_v1(x)
+            return self.forward_v2(x)
         elif self.v == "3":
             return self.forward_v3(x)
 
