@@ -2,7 +2,11 @@ import json
 
 import numpy as np
 
-from terel.resubmission.analysis import analyze_confirmatory_results
+from terel.resubmission.analysis import (
+    analyze_confirmatory_results,
+    render_appendix_latex,
+    render_results_latex,
+)
 
 
 def _write_result(root, dataset, run_id, seed, metric_name, value):
@@ -47,3 +51,58 @@ def test_confirmatory_analysis_reports_seed_summaries_and_paired_primary_effects
         analysis["primary_contrasts"]["pamap2_ordered_minus_shuffled"]["mean_difference"],
         0.05,
     )
+
+
+def test_results_table_preserves_small_nonzero_primary_interval_bound():
+    analysis = {
+        "datasets": {},
+        "primary_contrasts": {
+            "mnist_terel_minus_random": {
+                "treatment": "terel-local",
+                "control": "random",
+                "mean_difference": -0.00416,
+                "ci95_low": -0.00922,
+                "ci95_high": -0.00028,
+            }
+        },
+    }
+
+    latex = render_results_latex(analysis)
+
+    assert "\\begin{table}[H]" in latex
+    assert "-0.0042 [-0.0092, -0.0003]" in latex
+
+
+def test_appendix_table_reports_encoder_fit_resources():
+    analysis = {
+        "datasets": {
+            "mnist": {
+                "methods": {
+                    "terel-local": {
+                        "raw": [0.8],
+                        "encoder_training_by_seed": {
+                            "1": {
+                                "epochs": 10,
+                                "examples": 500,
+                                "seconds": 1.5,
+                                "peak_device_memory_bytes": 2 * 1024 * 1024,
+                            }
+                        },
+                        "resource_accounting_by_seed": {
+                            "1": {
+                                "operation_proxy": {
+                                    "linear_forward_backward_mac_proxy": 2_000_000_000,
+                                    "same_layer_pairwise_mac_proxy": 1_000_000_000,
+                                }
+                            }
+                        },
+                    }
+                }
+            }
+        }
+    }
+
+    latex = render_appendix_latex(analysis)
+
+    assert "Encoder-fit resource accounting" in latex
+    assert r"MNIST & \TeReL{}-local & 10 & 500 & 1.5 & 2.0 & 3.0" in latex

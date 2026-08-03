@@ -208,7 +208,7 @@ def render_results_latex(analysis):
         blocks.append(
             "\n".join(
                 [
-                    r"\begin{table}[t]",
+                    r"\begin{table}[H]",
                     r"\centering",
                     f"\\caption{{{title} across five seeds. Values are mean $\\pm$ sample SD "
                     "and percentile 95\\% bootstrap interval.}",
@@ -231,14 +231,14 @@ def render_results_latex(analysis):
             f'$-$ {METHOD_LABELS.get(summary["control"], summary["control"])}'
         )
         contrast_rows.append(
-            f'{label} & {summary["mean_difference"]:.3f} '
-            f'[{summary["ci95_low"]:.3f}, {summary["ci95_high"]:.3f}] \\\\'
+            f'{label} & {summary["mean_difference"]:.4f} '
+            f'[{summary["ci95_low"]:.4f}, {summary["ci95_high"]:.4f}] \\\\'
         )
     if contrast_rows:
         blocks.append(
             "\n".join(
                 [
-                    r"\begin{table}[t]",
+                    r"\begin{table}[H]",
                     r"\centering",
                     r"\caption{Predeclared paired primary effects across matched seeds.}",
                     r"\label{tab:primary-contrasts}",
@@ -258,6 +258,7 @@ def render_results_latex(analysis):
 
 def render_appendix_latex(analysis):
     rows = []
+    resource_rows = []
     for dataset_name, dataset in analysis["datasets"].items():
         for method in METHOD_ORDER[dataset_name]:
             if method not in dataset["methods"]:
@@ -267,7 +268,36 @@ def render_appendix_latex(analysis):
             rows.append(
                 f'{dataset_name.upper()} & {METHOD_LABELS.get(method, method)} & {raw} \\\\'
             )
-    return "\n".join(
+            training = [
+                record
+                for record in summary.get("encoder_training_by_seed", {}).values()
+                if record is not None
+            ]
+            if not training:
+                continue
+            resources = list(summary.get("resource_accounting_by_seed", {}).values())
+            epochs = sum(record["epochs"] for record in training) / len(training)
+            examples = sum(record["examples"] for record in training) / len(training)
+            seconds = sum(record["seconds"] for record in training) / len(training)
+            peak_bytes = sum(
+                record.get("peak_device_memory_bytes", 0) for record in training
+            ) / len(training)
+            mac_values = []
+            for resource in resources:
+                operation = resource.get("operation_proxy", {})
+                components = [
+                    operation.get("linear_forward_backward_mac_proxy"),
+                    operation.get("same_layer_pairwise_mac_proxy"),
+                ]
+                if any(component is not None for component in components):
+                    mac_values.append(sum(component or 0 for component in components))
+            peak = f"{peak_bytes / (1024**2):.1f}" if peak_bytes > 0 else "--"
+            mac = f"{sum(mac_values) / len(mac_values) / 1e9:.1f}" if mac_values else "--"
+            resource_rows.append(
+                f'{dataset_name.upper()} & {METHOD_LABELS.get(method, method)} & '
+                f'{epochs:.0f} & {examples:.0f} & {seconds:.1f} & {peak} & {mac} \\\\'
+            )
+    raw_table = "\n".join(
         [
             r"\begin{table}[H]",
             r"\centering",
@@ -285,6 +315,25 @@ def render_appendix_latex(analysis):
             "",
         ]
     )
+    resource_table = "\n".join(
+        [
+            r"\begin{table}[H]",
+            r"\centering",
+            r"\small",
+            r"\caption{Encoder-fit resource accounting, averaged across five seeds. Observed time and peak allocated device memory describe the frozen execution environment; MAC is the sum of the declared linear forward/backward and same-layer pairwise operation proxies for neural methods. Random encoders require no fit and are omitted. CPU SFA memory and operation proxies were not instrumented.}",
+            r"\label{tab:confirmatory-resources}",
+            r"\begin{tabular}{llrrrrr}",
+            r"\toprule",
+            r"Dataset & Method & Epoch/pass & Examples & Seconds & Peak MiB & MAC (G) \\",
+            r"\midrule",
+            *resource_rows,
+            r"\bottomrule",
+            r"\end{tabular}",
+            r"\end{table}",
+            "",
+        ]
+    )
+    return resource_table + "\n" + raw_table
 
 
 def main(argv=None):

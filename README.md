@@ -83,6 +83,25 @@ local supervised contrastive learning, supervised BP, and direct covariance on
 MNIST. On PAMAP2 it additionally pairs chronological and shuffled TeReL and
 includes batch SFA and IncSFA.
 
+### Frozen revised result
+
+The executed matrix used code commit
+`abfa0ec1df78204b66d0c34141f5deb6063a572a`, manifest SHA-256
+`38ca928e0884a8bc40a5c7ffefc46313fc96c170661aea63f93bf9496b2b1af0`,
+and configuration SHA-256
+`c2520fa7e5751ca879da6683e6c193bfa5a800f59ec685e82199d892bbce8c42`.
+All 60 planned runs completed before analysis.
+
+On MNIST, TeReL reaches 0.886 mean accuracy versus 0.890 for the matched
+random encoder; the paired difference is -0.0042 with 95% bootstrap interval
+[-0.0092, -0.0003]. Its nearest-centroid accuracy nevertheless rises from
+0.760 to 0.852, showing a repeatable change in class geometry. Direct
+in-batch covariance reaches 0.916 and exposes the cost of the tracked lateral
+proxy. On subject-disjoint PAMAP2, chronological TeReL reaches 0.307 macro-F1
+versus 0.312 after shuffling; the paired interval [-0.0625, 0.0530] does not
+support a natural-order advantage. These held-out results narrowed the claims
+and did not trigger further tuning.
+
 ## Analyze results and audit locality
 
 ```bash
