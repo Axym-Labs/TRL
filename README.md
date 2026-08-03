@@ -1,51 +1,131 @@
+# Temporal Regularized Learning (TeReL)
 
-# Temporal Regularized Learning: Self-Supervised Learning Local In Space And Time
+TeReL trains each layer of a nonlinear encoder from temporal coherence,
+anti-collapse variance expansion, and a same-layer decorrelation signal. The
+corrected formulation is a deep local, soft-constraint form of Slow Feature
+Analysis: gradients do not cross layers or preceding steps, while detached
+running statistics and a dense lateral operator provide bounded-history state.
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18673107.svg)](https://doi.org/10.5281/zenodo.18673107)
-[![ResearchGate](https://img.shields.io/badge/Read%20on-ResearchGate-00cc66.svg)](https://www.researchgate.net/publication/400877450_Temporal_Regularized_Learning_Self-supervised_learning_local_in_space_and_time?_tp=eyJjb250ZXh0Ijp7InBhZ2UiOiJwcm9maWxlIiwicHJldmlvdXNQYWdlIjoiaG9tZSIsInBvc2l0aW9uIjoicGFnZUNvbnRlbnQifX0)
+This repository contains the leakage-controlled implementation and experiment
+pipeline for the revised paper. The revision explicitly treats label-ordered
+MNIST as label-assisted and tests natural, label-free encoder pretraining on
+chronological PAMAP2 streams.
 
+> **Correction notice.** Results from the originally cited TeReL experiment
+> commits are not evidence for the revised claims. An optimizer-registration
+> defect left later encoder layers unstepped, one legacy BP dispatcher selected
+> the wrong model, and the original split reused held-out data during model
+> development. The corrected pipeline retires all affected numbers and refuses
+> held-out evaluation until a validation ledger, protocol hash, clean code
+> commit, and explicit test flag agree.
 
-**[Paper PDF](https://zenodo.org/records/18673107)**
+## Quick start
 
-Temporal Regularized Learning (TeReL) is a highly local and self-supervised procedure that optimizes
-each neuron individually. We adapt the self-supervised loss formulation of VICReg, consisting
-of variance, invariance and covariance to input streams with sequential coherence and for online-
-compatibility. It removes the need for biphasic updates, negatives or inner-loop convergence, given
-three scalar memory units per neuron and an auxiliary lateral network. Knowledge about downstream
-tasks can be injected through the sequence ordering, allowing for supervised training. We present
-TeReL and its simplified variant, TeReL-S. Experiments on MNIST show TeReL is competitive with
-backpropagation, Forward-Forward and Equilibrium Propagation, while TeReL-S achieves similar
-performance despite its simplified setup. We show that TeReL creates neurons with specialized receptive
-fields in the first layer. In later layers, some neurons specialize by activating only for some types of
-input.
+Python 3.12 and all direct dependencies are pinned in `pyproject.toml` and
+`uv.lock`.
 
-Cite the paper:
-
-```
-@misc{Wiest2025,
-  author       = {Wiest, Davide},
-  title        = {{Temporal Regularized Learning: Self-supervised learning local in space and time}},
-  publisher    = {Zenodo},
-  year         = {2026},
-  doi          = {10.5281/zenodo.18673107},
-  url          = {https://doi.org/10.5281/zenodo.18673107}
-}
+```bash
+uv sync --extra test
+uv run pytest -q
 ```
 
+The fidelity suite covers the objective signs and detachments, every-layer
+updates, fixed state size, split isolation, boundary-aware SFA controls, the
+IncSFA port, BP construction, and the held-out gate.
 
-### Quickstart
-- Train a TeReL model with `train.py`.
-- `terel/config/configurations.py` contains functions that modify the setup, e.g. modify the model architecture.
-- The `previous_versions` folder has a README with short explanations of what changed in each version.
+## Reproduce the corrected experiments
 
+1. Download MNIST under a local data root and place the extracted PAMAP2
+   archive under another. Update only the two `data_root` values in
+   `configs/resubmission/selection-plan.yaml` for your machine.
+2. Run the bounded validation sweep. It uses seeds 101, 202, and 303 and never
+   evaluates the official MNIST test split or PAMAP2 subject 8.
 
-> The paper experiments were run on earlier commits than the current one.
-> MNIST Classification
-> - Backprop: `25908634afa795840b0026d8481fa69338e857ec`
-> - TeReL / TeReL-S: `b39b73fac94e984f089820bec7a421499bcd6c0d`
->
-> MNIST Rows next-row prediction:
-> - `0e454ac` (`rnn and new analysis outputs`)
-> - `221f22c` (`rnn setup`)
->
-> Current code has changed since these commits.
+```bash
+uv run python -m terel.resubmission.selection \
+  --plan configs/resubmission/selection-plan.yaml \
+  --output artifacts/selection-results \
+  --repository . \
+  --protocol /path/to/confirmatory-protocol.md \
+  --device cuda
+```
+
+3. After the selection ledger is complete and the worktree is committed and
+   clean, freeze the exact five-seed test matrix.
+
+```bash
+uv run python -m terel.resubmission.confirmatory freeze \
+  --selection-plan configs/resubmission/selection-plan.yaml \
+  --validation-ledger artifacts/selection-results/validation-ledger.json \
+  --protocol /path/to/confirmatory-protocol.md \
+  --repository . \
+  --output artifacts/confirmatory-manifest.json
+```
+
+4. Open the held-out gate explicitly. Runs are written per seed and resume
+   safely when the same manifest is used again.
+
+```bash
+uv run python -m terel.resubmission.confirmatory run \
+  --manifest artifacts/confirmatory-manifest.json \
+  --validation-ledger artifacts/selection-results/validation-ledger.json \
+  --protocol /path/to/confirmatory-protocol.md \
+  --repository . \
+  --output artifacts/confirmatory-results \
+  --device cuda \
+  --allow-test
+```
+
+The frozen matrix compares corrected TeReL with the identical random encoder,
+local supervised contrastive learning, supervised BP, and direct covariance on
+MNIST. On PAMAP2 it additionally pairs chronological and shuffled TeReL and
+includes batch SFA and IncSFA.
+
+## Analyze results and audit locality
+
+```bash
+uv run python -m terel.resubmission.analysis \
+  --results artifacts/confirmatory-results \
+  --analysis-output artifacts/confirmatory-analysis.json \
+  --results-tex artifacts/generated_results.tex \
+  --appendix-tex artifacts/generated_appendix_results.tex
+
+uv run python -m terel.resubmission.locality \
+  --manifest artifacts/confirmatory-manifest.json \
+  --repository . \
+  --output artifacts/locality-audit.json \
+  --device cuda
+```
+
+The analysis preserves every raw seed and reports the mean, sample standard
+deviation, 10,000-resample percentile interval, and paired primary effects.
+The locality audit compares batch-size-one detached execution with detached
+and undetached minibatches, including throughput, peak memory, parameter,
+optimizer, and dynamic-state bytes.
+
+## Method and claim boundary
+
+- TeReL's temporal, variance, and decorrelation structure is inherited at the
+  objective level from SFA and related regularized self-supervised methods.
+- The algorithmic contribution is the particular deep local parameterization,
+  detached population/temporal state, and tracked same-layer lateral proxy.
+- Local credit assignment does not imply sparse communication: a width-`D`
+  layer stores `D² + 4D + 1` dynamic state elements.
+- Label-derived MNIST ordering is supervision through the data order. The
+  self-supervised temporal-order contrast is the label-free PAMAP2 encoder run.
+- Hardware relevance is a motivation; this repository does not claim measured
+  energy efficiency or biological plausibility.
+
+## Repository layout
+
+```text
+terel/resubmission/                 corrected objectives, models, baselines, and gates
+configs/resubmission/               frozen validation plan
+tests/test_resubmission_*.py        scientific and implementation-fidelity tests
+terel/ and previous_versions/       legacy exploratory code retained for provenance
+```
+
+The historical Zenodo record is available at
+[doi:10.5281/zenodo.18673107](https://doi.org/10.5281/zenodo.18673107). Cite the
+revised paper once its new archival record is available; the historical record
+should not be used as the source of corrected numerical results.
