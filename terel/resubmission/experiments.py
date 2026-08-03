@@ -35,6 +35,9 @@ class EncoderExperimentConfig:
     method: str
     hidden_dims: tuple[int, ...]
     activation: str = "leaky_relu"
+    normalization: str = "none"
+    training_mode: str = "joint"
+    augmentation: str = "none"
     epochs: int = 10
     batch_size: int = 256
     order_mode: str = "chronological"
@@ -62,6 +65,7 @@ class ProbeExperimentConfig:
     optimizer: str = "adamw"
     learning_rate: float = 3e-3
     weight_decay: float = 1e-4
+    readout: str = "last"
 
 
 @dataclass(frozen=True)
@@ -169,15 +173,17 @@ def _operation_proxy(
 
 
 @torch.no_grad()
-def _supervised_representations(model, dataset, *, batch_size, device):
+def _supervised_representations(
+    model, dataset, *, batch_size, device, use_all_layers=False
+):
     model.eval()
     batches = []
     for start in range(0, len(dataset), batch_size):
-        batches.append(
-            model.representations(dataset.features[start : start + batch_size].to(device))[-1]
-            .detach()
-            .cpu()
+        representations = model.representations(
+            dataset.features[start : start + batch_size].to(device)
         )
+        selected = torch.cat(representations, dim=1) if use_all_layers else representations[-1]
+        batches.append(selected.detach().cpu())
     return torch.cat(batches)
 
 
@@ -222,6 +228,8 @@ def run_representation_experiment(
             repository=test_gate.repository,
             explicit_allow_test=test_gate.explicit_allow_test,
         )
+    if probe.readout not in {"last", "all"}:
+        raise ValueError("probe readout must be 'last' or 'all'")
 
     set_reproducible_seed(seed)
     train_dataset = splits.train
@@ -237,6 +245,7 @@ def run_representation_experiment(
             input_dim=input_dim,
             hidden_dims=encoder.hidden_dims,
             activation=encoder.activation,
+            normalization=encoder.normalization,
             statistics_momentum=encoder.statistics_momentum,
             lateral_momentum=encoder.lateral_momentum,
         ).to(device)
@@ -285,12 +294,22 @@ def run_representation_experiment(
                     detach_previous=detach_previous,
                     covariance_mode=covariance_mode,
                     device=device,
+                    training_mode=encoder.training_mode,
+                    augmentation=encoder.augmentation,
                 )
         train_representations = extract_representations(
-            model, train_dataset, batch_size=probe.batch_size, device=device
+            model,
+            train_dataset,
+            batch_size=probe.batch_size,
+            device=device,
+            use_all_layers=probe.readout == "all",
         )
         evaluation_representations = extract_representations(
-            model, evaluation_dataset, batch_size=probe.batch_size, device=device
+            model,
+            evaluation_dataset,
+            batch_size=probe.batch_size,
+            device=device,
+            use_all_layers=probe.readout == "all",
         )
         linear_probe, probe_training = fit_linear_probe(
             train_representations,
@@ -314,6 +333,7 @@ def run_representation_experiment(
             hidden_dims=encoder.hidden_dims,
             output_dim=num_classes,
             activation=encoder.activation,
+            normalization=encoder.normalization,
         ).to(device)
         optimizer = _optimizer(
             encoder.optimizer,
@@ -329,15 +349,36 @@ def run_representation_experiment(
             batch_size=encoder.batch_size,
             seed=seed,
             device=device,
+            augmentation=encoder.augmentation,
         )
         train_representations = _supervised_representations(
-            model, train_dataset, batch_size=probe.batch_size, device=device
+            model,
+            train_dataset,
+            batch_size=probe.batch_size,
+            device=device,
+            use_all_layers=probe.readout == "all",
         )
         evaluation_representations = _supervised_representations(
-            model, evaluation_dataset, batch_size=probe.batch_size, device=device
+            model,
+            evaluation_dataset,
+            batch_size=probe.batch_size,
+            device=device,
+            use_all_layers=probe.readout == "all",
+        )
+        linear_probe, probe_training = fit_linear_probe(
+            train_representations,
+            train_dataset.labels,
+            num_classes=num_classes,
+            seed=seed + 10_000,
+            epochs=probe.epochs,
+            batch_size=probe.batch_size,
+            optimizer_name=probe.optimizer,
+            learning_rate=probe.learning_rate,
+            weight_decay=probe.weight_decay,
+            device=device,
         )
         with torch.no_grad():
-            logits = model(evaluation_dataset.features.to(device)).cpu()
+            logits = linear_probe(evaluation_representations.to(device)).cpu()
         dynamic_state_bytes = 0
 
     elif method == "sfa":
@@ -439,6 +480,7 @@ def run_representation_experiment(
         "optimizer_state_bytes": int(_optimizer_bytes(optimizer)) if optimizer is not None else 0,
         "encoder_batch_size": int(encoder.batch_size),
         "probe_batch_size": int(probe.batch_size),
+        "probe_input_dim": int(evaluation_representations.shape[1]),
         "operation_proxy": _operation_proxy(
             method,
             input_dim=input_dim,

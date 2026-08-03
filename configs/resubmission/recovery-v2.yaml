@@ -1,0 +1,133 @@
+protocol_version: recovery-v2.0
+maximum_candidates: 24
+data_root: /home/davwis/main/data/mnist
+
+encoder_base:
+  method: terel_local
+  hidden_dims: [512, 256]
+  activation: leaky_relu
+  normalization: none
+  training_mode: joint
+  augmentation: none
+  epochs: 10
+  batch_size: 256
+  order_mode: class_chunks
+  chunk_size: 16
+  optimizer: adamw
+  learning_rate: 0.0003
+  weight_decay: 0.0001
+  similarity_coefficient: 1.0
+  variance_coefficient: 5.0
+  covariance_coefficient: 1.0
+  variance_target: 1.0
+  statistics_momentum: 0.9
+  lateral_momentum: 0.99
+
+probe_base:
+  epochs: 60
+  batch_size: 2048
+  optimizer: adamw
+  learning_rate: 0.003
+  weight_decay: 0.0001
+  readout: last
+
+candidates:
+  - id: b0-short-detached-last
+    description: Common protocol-v1 baseline rerun.
+  - id: readout-all
+    description: Change only the matched probe from last-layer to all-layer access.
+    probe: {readout: all}
+  - id: undetached
+    description: Change only temporal-reference differentiation to canonical batched TeReL.
+    encoder: {method: terel_batch}
+  - id: epochs-60
+    description: Change only joint encoder training from 10 to 60 epochs.
+    encoder: {epochs: 60}
+  - id: greedy-10
+    description: Change only joint training to ten epochs per layer.
+    encoder: {training_mode: greedy}
+  - id: batchnorm
+    description: Change only the hidden-layer normalization to batch normalization.
+    encoder: {normalization: batch_norm}
+  - id: affine
+    description: Change only train-time input processing to seeded affine augmentation.
+    encoder: {augmentation: mnist_affine}
+  - id: lateral-current
+    description: Change only the lateral covariance timescale to the current minibatch.
+    encoder: {lateral_momentum: 0.0}
+  - id: recovered-short
+    description: Combine the two independently validated recovery factors, current-batch lateral state and matched all-layer readout.
+    encoder: {lateral_momentum: 0.0}
+    probe: {readout: all}
+  - id: recovered-bn
+    description: Add batch normalization to the recovered short protocol.
+    encoder: {lateral_momentum: 0.0, normalization: batch_norm}
+    probe: {readout: all}
+  - id: recovered-long
+    description: Extend the recovered protocol from 10 to 60 joint epochs.
+    encoder: {lateral_momentum: 0.0, epochs: 60}
+    probe: {readout: all}
+  - id: canonical-recovered
+    description: Test canonical undetached TeReL with greedy scheduling under recovered state and readout conditions.
+    encoder:
+      method: terel_batch
+      training_mode: greedy
+      lateral_momentum: 0.0
+      epochs: 30
+      variance_coefficient: 5.0
+    probe: {readout: all}
+  - id: canonical-recovered-bn
+    description: Add batch normalization to canonical recovered TeReL.
+    encoder:
+      method: terel_batch
+      training_mode: greedy
+      normalization: batch_norm
+      lateral_momentum: 0.0
+      epochs: 30
+      variance_coefficient: 2.5
+    probe: {readout: all}
+  - id: matched-random-all
+    description: Random encoder with the same all-layer readout.
+    encoder: {method: random}
+    probe: {readout: all}
+  - id: matched-bp-all
+    description: Supervised backprop encoder with the same all-layer readout and short compute schedule.
+    encoder: {method: bp, lateral_momentum: 0.0}
+    probe: {readout: all}
+  - id: submitted-core
+    description: Restore canonical undetached, greedy, long, all-layer submitted-protocol core without augmentation or normalization.
+    encoder:
+      method: terel_batch
+      activation: relu
+      training_mode: greedy
+      epochs: 60
+      batch_size: 64
+      learning_rate: 0.0001
+      weight_decay: 0.0
+      lateral_momentum: 0.0
+    probe:
+      readout: all
+      epochs: 60
+      batch_size: 64
+      learning_rate: 0.0001
+      weight_decay: 0.0
+  - id: submitted-aug-bn
+    description: Restore the submitted headline protocol with affine augmentation and batch normalization.
+    encoder:
+      method: terel_batch
+      activation: relu
+      normalization: batch_norm
+      training_mode: greedy
+      augmentation: mnist_affine
+      epochs: 60
+      batch_size: 64
+      learning_rate: 0.0004
+      weight_decay: 0.0
+      variance_coefficient: 2.5
+      lateral_momentum: 0.0
+    probe:
+      readout: all
+      epochs: 60
+      batch_size: 64
+      learning_rate: 0.0001
+      weight_decay: 0.0

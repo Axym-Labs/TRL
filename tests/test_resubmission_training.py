@@ -3,7 +3,7 @@ import torch
 from terel.resubmission.data import TemporalTensorDataset
 from terel.resubmission.model import LayerLocalEncoder
 from terel.resubmission.objective import LossCoefficients
-from terel.resubmission.training import local_train_step, train_local_encoder
+from terel.resubmission.training import augment_mnist_batch, local_train_step, train_local_encoder
 
 
 def test_leaky_relu_keeps_a_gradient_path_for_negative_units():
@@ -177,3 +177,45 @@ def test_training_loop_records_every_layer_update_and_exact_example_budget():
     assert all(delta > 0.0 for delta in summary.layer_lateral_delta_l2)
     assert summary.dynamic_state_numel == sum(state.dynamic_state_numel() for state in model.states)
     assert summary.seconds > 0.0
+
+
+def test_batch_normalization_parameters_are_registered_and_trainable():
+    torch.manual_seed(37)
+    model = LayerLocalEncoder(
+        input_dim=4,
+        hidden_dims=(5, 3),
+        activation="relu",
+        normalization="batch_norm",
+        statistics_momentum=0.9,
+        lateral_momentum=0.9,
+    )
+    optimizer = torch.optim.SGD(model.encoder_parameters(), lr=0.02)
+    before = [normalization.weight.detach().clone() for normalization in model.normalizations]
+
+    local_train_step(
+        model=model,
+        optimizer=optimizer,
+        x=torch.randn(8, 4),
+        boundaries=torch.tensor([True, False, False, False, True, False, False, False]),
+        coefficients=LossCoefficients(similarity=1.0, variance=1.0, covariance=0.0),
+        variance_target=1.0,
+        detach_previous=False,
+    )
+
+    assert all(
+        not torch.equal(old, normalization.weight.detach())
+        for old, normalization in zip(before, model.normalizations, strict=True)
+    )
+
+
+def test_mnist_augmentation_is_seeded_train_only_and_shape_preserving():
+    features = torch.linspace(-0.4, 2.0, steps=2 * 28 * 28).reshape(2, 28 * 28)
+
+    first = augment_mnist_batch(features, seed=41)
+    second = augment_mnist_batch(features, seed=41)
+    different = augment_mnist_batch(features, seed=42)
+
+    assert first.shape == features.shape
+    assert torch.equal(first, second)
+    assert not torch.equal(first, different)
+    assert not torch.equal(first, features)

@@ -49,6 +49,58 @@ def _probe_config():
     )
 
 
+def test_matched_all_layer_readout_is_a_frozen_probe_choice():
+    result = run_representation_experiment(
+        splits=_toy_splits(),
+        dataset_name="toy",
+        num_classes=2,
+        seed=101,
+        encoder=EncoderExperimentConfig(
+            method="random",
+            hidden_dims=(4, 2),
+            epochs=1,
+            batch_size=3,
+            order_mode="chronological",
+        ),
+        probe=ProbeExperimentConfig(
+            epochs=40,
+            batch_size=3,
+            optimizer="sgd",
+            learning_rate=0.1,
+            weight_decay=0.0,
+            readout="all",
+        ),
+        evaluation_split="validation",
+        device=torch.device("cpu"),
+    )
+
+    assert result["probe_config"]["readout"] == "all"
+    assert result["resource_accounting"]["probe_input_dim"] == 6
+
+
+def test_invalid_probe_readout_is_rejected_before_training():
+    try:
+        run_representation_experiment(
+            splits=_toy_splits(),
+            dataset_name="toy",
+            num_classes=2,
+            seed=101,
+            encoder=EncoderExperimentConfig(
+                method="random",
+                hidden_dims=(4, 2),
+                epochs=1,
+                batch_size=3,
+            ),
+            probe=ProbeExperimentConfig(readout="secret_labels"),
+            evaluation_split="validation",
+            device=torch.device("cpu"),
+        )
+    except ValueError as error:
+        assert "readout" in str(error)
+    else:
+        raise AssertionError("invalid readout was accepted")
+
+
 def test_default_statistics_rate_is_the_validated_noncollapse_setting():
     """A 0.99 default delays the variance gate long enough for ReLU collapse."""
     config = EncoderExperimentConfig(
@@ -127,6 +179,37 @@ def test_corrected_terel_experiment_records_all_layer_updates():
     assert result["resource_accounting"]["operation_proxy"]["linear_forward_backward_mac_proxy"] > 0
     assert result["resource_accounting"]["operation_proxy"]["same_layer_pairwise_mac_proxy"] > 0
     assert "temporal_slowness" in result["representation_diagnostics"]
+
+
+def test_greedy_training_budget_is_recorded_as_epochs_per_layer():
+    result = run_representation_experiment(
+        splits=_toy_splits(),
+        dataset_name="toy",
+        num_classes=2,
+        seed=101,
+        encoder=EncoderExperimentConfig(
+            method="terel_batch",
+            hidden_dims=(4, 2),
+            activation="identity",
+            epochs=2,
+            batch_size=3,
+            order_mode="chronological",
+            optimizer="sgd",
+            learning_rate=0.01,
+            weight_decay=0.0,
+            statistics_momentum=0.9,
+            lateral_momentum=0.9,
+            training_mode="greedy",
+        ),
+        probe=_probe_config(),
+        evaluation_split="validation",
+        device=torch.device("cpu"),
+    )
+
+    assert result["encoder_training"]["training_mode"] == "greedy"
+    assert result["encoder_training"]["epochs_per_layer"] == 2
+    assert result["encoder_training"]["examples"] == 2 * 2 * 6
+    assert all(delta > 0.0 for delta in result["encoder_training"]["layer_parameter_delta_l2"])
 
 
 def test_held_out_split_cannot_run_without_gate_context():

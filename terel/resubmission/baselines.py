@@ -72,6 +72,7 @@ class SupervisedMLP(nn.Module):
         hidden_dims: tuple[int, ...],
         output_dim: int,
         activation: str = "leaky_relu",
+        normalization: str = "none",
     ):
         super().__init__()
         if not hidden_dims:
@@ -81,6 +82,15 @@ class SupervisedMLP(nn.Module):
             nn.Linear(in_features, out_features)
             for in_features, out_features in zip(dims[:-1], dims[1:], strict=True)
         )
+        if normalization == "none":
+            self.normalizations = nn.ModuleList(nn.Identity() for _ in hidden_dims)
+        elif normalization == "batch_norm":
+            self.normalizations = nn.ModuleList(
+                nn.BatchNorm1d(width, eps=1e-5, momentum=0.1, affine=True)
+                for width in hidden_dims
+            )
+        else:
+            raise ValueError(f"Unsupported normalization '{normalization}'")
         if activation == "relu":
             self.activation = nn.ReLU()
         elif activation == "leaky_relu":
@@ -94,8 +104,10 @@ class SupervisedMLP(nn.Module):
     def representations(self, x: torch.Tensor) -> list[torch.Tensor]:
         activations = []
         current = x
-        for layer in self.hidden_layers:
-            current = self.activation(layer(current))
+        for layer, normalization in zip(
+            self.hidden_layers, self.normalizations, strict=True
+        ):
+            current = self.activation(normalization(layer(current)))
             activations.append(current)
         return activations
 
@@ -165,6 +177,7 @@ def train_supervised_mlp(
     batch_size: int,
     seed: int,
     device: torch.device,
+    augmentation: str = "none",
 ):
     if epochs <= 0 or batch_size <= 0:
         raise ValueError("epochs and batch_size must be positive")
@@ -187,7 +200,16 @@ def train_supervised_mlp(
         for start in range(0, len(dataset), batch_size):
             index = order[start : start + batch_size].to(device)
             optimizer.zero_grad(set_to_none=True)
-            loss = F.cross_entropy(model(features[index]), labels[index])
+            selected_features = features[index]
+            if augmentation == "mnist_affine":
+                from .training import augment_mnist_batch
+
+                selected_features = augment_mnist_batch(
+                    selected_features, seed=seed + steps
+                )
+            elif augmentation != "none":
+                raise ValueError(f"Unsupported augmentation '{augmentation}'")
+            loss = F.cross_entropy(model(selected_features), labels[index])
             loss.backward()
             optimizer.step()
             final_loss = float(loss.detach())

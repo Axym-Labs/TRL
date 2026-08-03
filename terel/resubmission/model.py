@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from itertools import chain
 
 import torch
 from torch import nn
@@ -17,6 +18,7 @@ class LayerLocalEncoder(nn.Module):
         activation: str,
         statistics_momentum: float,
         lateral_momentum: float,
+        normalization: str = "none",
     ):
         super().__init__()
         if not hidden_dims:
@@ -26,6 +28,16 @@ class LayerLocalEncoder(nn.Module):
             nn.Linear(in_features, out_features)
             for in_features, out_features in zip(dims[:-1], dims[1:], strict=True)
         )
+        if normalization == "none":
+            self.normalizations = nn.ModuleList(nn.Identity() for _ in hidden_dims)
+        elif normalization == "batch_norm":
+            self.normalizations = nn.ModuleList(
+                nn.BatchNorm1d(width, eps=1e-5, momentum=0.1, affine=True)
+                for width in hidden_dims
+            )
+        else:
+            raise ValueError(f"Unsupported normalization '{normalization}'")
+        self.normalization = normalization
         if activation == "relu":
             self.activation = nn.ReLU()
         elif activation == "leaky_relu":
@@ -39,21 +51,27 @@ class LayerLocalEncoder(nn.Module):
         )
 
     def encoder_parameters(self) -> Iterable[nn.Parameter]:
-        return self.layers.parameters()
+        return chain(self.layers.parameters(), self.normalizations.parameters())
 
-    def forward_local(self, x: torch.Tensor) -> list[torch.Tensor]:
+    def forward_local(
+        self, x: torch.Tensor, *, stop_after: int | None = None
+    ) -> list[torch.Tensor]:
         activations = []
         current = x
-        for layer in self.layers:
-            current = self.activation(layer(current))
+        for index, (layer, normalization) in enumerate(
+            zip(self.layers, self.normalizations, strict=True)
+        ):
+            current = self.activation(normalization(layer(current)))
             activations.append(current)
+            if stop_after is not None and index == stop_after:
+                break
             current = current.detach()
         return activations
 
     def forward(self, x: torch.Tensor, *, return_all: bool = False):
         activations = []
         current = x
-        for layer in self.layers:
-            current = self.activation(layer(current))
+        for layer, normalization in zip(self.layers, self.normalizations, strict=True):
+            current = self.activation(normalization(layer(current)))
             activations.append(current)
         return activations if return_all else activations[-1]

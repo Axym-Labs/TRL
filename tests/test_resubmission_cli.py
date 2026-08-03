@@ -26,6 +26,7 @@ probe:
   optimizer: adamw
   learning_rate: 0.003
   weight_decay: 0.0001
+  readout: all
 """
     )
 
@@ -37,4 +38,5 @@ probe:
     assert spec.encoder.method == "terel_local"
     assert spec.encoder.statistics_momentum == 0.9
     assert spec.probe.learning_rate == 0.003
+    assert spec.probe.readout == "all"
     json.dumps(spec.as_dictionary())
