@@ -22,7 +22,9 @@ chronological PAMAP2 streams.
 ## Quick start
 
 Python 3.12 and all direct dependencies are pinned in `pyproject.toml` and
-`uv.lock`.
+`uv.lock`. Each run also enables deterministic PyTorch algorithms and records
+the Python, package, CUDA, cuDNN, CPU, and GPU environment in its frozen
+manifest.
 
 ```bash
 uv sync --extra test

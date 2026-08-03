@@ -1,8 +1,12 @@
 from dataclasses import asdict, dataclass
+import os
 import random
 import time
 
 import numpy as np
+
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+
 import torch
 
 from .baselines import (
@@ -73,6 +77,9 @@ def set_reproducible_seed(seed: int):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
+    torch.use_deterministic_algorithms(True)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
 

@@ -59,6 +59,18 @@ def test_default_statistics_rate_is_the_validated_noncollapse_setting():
     assert config.statistics_momentum == 0.9
 
 
+def test_seed_setup_enables_deterministic_torch_execution():
+    from terel.resubmission.experiments import set_reproducible_seed
+
+    set_reproducible_seed(101)
+    first = torch.randn(8)
+    set_reproducible_seed(101)
+    second = torch.randn(8)
+
+    assert torch.are_deterministic_algorithms_enabled()
+    assert torch.equal(first, second)
+
+
 def test_random_encoder_experiment_has_matched_probe_and_serializable_audit():
     result = run_representation_experiment(
         splits=_toy_splits(),

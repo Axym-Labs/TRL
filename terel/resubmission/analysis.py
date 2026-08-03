@@ -27,6 +27,24 @@ METHOD_LABELS = {
     "batch-sfa": "Batch SFA",
     "incremental-sfa": "IncSFA",
 }
+METHOD_ORDER = {
+    "mnist": (
+        "terel-local",
+        "random",
+        "local-supcon",
+        "direct-covariance",
+        "bp",
+    ),
+    "pamap2": (
+        "terel-ordered",
+        "terel-shuffled",
+        "random",
+        "batch-sfa",
+        "incremental-sfa",
+        "direct-covariance",
+        "bp",
+    ),
+}
 
 
 def _write_text_atomic(path, value):
@@ -68,8 +86,16 @@ def analyze_confirmatory_results(
     expected_seeds=(1001, 1002, 1003, 1004, 1005),
     bootstrap_samples=10_000,
     bootstrap_seed=260803,
+    expected_methods=None,
 ):
     records = _load_records(results_directory)
+    manifest_hashes = {
+        result.get("manifest_configuration_sha256")
+        for result in records.values()
+        if result.get("manifest_configuration_sha256") is not None
+    }
+    if len(manifest_hashes) > 1:
+        raise ValueError("confirmatory records contain multiple manifest configurations")
     expected_seeds = tuple(int(seed) for seed in expected_seeds)
     datasets = {}
     for dataset_name, primary_metric in PRIMARY_METRICS.items():
@@ -78,6 +104,8 @@ def analyze_confirmatory_results(
         )
         if not run_ids:
             continue
+        if expected_methods is not None and set(run_ids) != set(expected_methods[dataset_name]):
+            raise ValueError(f"{dataset_name} confirmatory method set is incomplete")
         methods = {}
         for run_id in run_ids:
             seed_records = {
@@ -170,10 +198,13 @@ def render_results_latex(analysis):
         dataset = analysis["datasets"][dataset_name]
         title = "MNIST test accuracy" if dataset_name == "mnist" else "PAMAP2 test macro-F1"
         label = f"tab:{dataset_name}-confirmatory"
-        rows = [
-            f'{METHOD_LABELS.get(method, method)} & {_format_interval(summary)} \\\\'
-            for method, summary in dataset["methods"].items()
-        ]
+        rows = []
+        for method in METHOD_ORDER[dataset_name]:
+            if method in dataset["methods"]:
+                rows.append(
+                    f'{METHOD_LABELS.get(method, method)} & '
+                    f'{_format_interval(dataset["methods"][method])} \\\\'
+                )
         blocks.append(
             "\n".join(
                 [
@@ -228,7 +259,10 @@ def render_results_latex(analysis):
 def render_appendix_latex(analysis):
     rows = []
     for dataset_name, dataset in analysis["datasets"].items():
-        for method, summary in dataset["methods"].items():
+        for method in METHOD_ORDER[dataset_name]:
+            if method not in dataset["methods"]:
+                continue
+            summary = dataset["methods"][method]
             raw = ", ".join(f"{value:.4f}" for value in summary["raw"])
             rows.append(
                 f'{dataset_name.upper()} & {METHOD_LABELS.get(method, method)} & {raw} \\\\'
@@ -260,7 +294,14 @@ def main(argv=None):
     parser.add_argument("--results-tex", required=True)
     parser.add_argument("--appendix-tex", required=True)
     arguments = parser.parse_args(argv)
-    analysis = analyze_confirmatory_results(arguments.results)
+    ledger_path = Path(arguments.results) / "confirmatory-ledger.json"
+    ledger = json.loads(ledger_path.read_text())
+    if not ledger.get("confirmatory_complete"):
+        raise ValueError("confirmatory ledger is incomplete")
+    analysis = analyze_confirmatory_results(
+        arguments.results,
+        expected_methods=METHOD_ORDER,
+    )
     _write_text_atomic(
         arguments.analysis_output,
         json.dumps(analysis, indent=2, sort_keys=True) + "\n",

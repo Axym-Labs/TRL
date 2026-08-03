@@ -90,6 +90,7 @@ def resolve_confirmatory_configuration(
             "incremental-sfa",
             pamap_encoder,
             method="incsfa",
+            epochs=1,
             incsfa_whitening_dim=52,
             incsfa_output_dim=52,
             incsfa_learning_rate=0.001,

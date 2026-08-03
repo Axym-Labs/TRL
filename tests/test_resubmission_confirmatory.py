@@ -84,6 +84,8 @@ def test_confirmatory_configuration_resolves_selection_and_fixed_controls():
     assert pamap2["terel-shuffled"]["encoder"]["order_mode"] == "shuffled"
     assert pamap2["batch-sfa"]["encoder"]["method"] == "sfa"
     assert pamap2["incremental-sfa"]["encoder"]["method"] == "incsfa"
+    assert pamap2["incremental-sfa"]["encoder"]["epochs"] == 1
+    assert pamap2["incremental-sfa"]["encoder"]["incsfa_output_dim"] == 52
     assert configuration["selection_seeds"] == [101, 202, 303]
 
 
