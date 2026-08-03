@@ -53,7 +53,8 @@ uv run python -m terel.resubmission.recovery \
 
 The complete candidate registry is in `recovery-v2.yaml`; the samplewise study
 uses `streaming-recovery-v2.yaml`. The frozen choices and all validation
-records are summarized in `validation-ledger-v2.json`.
+records are summarized in `validation-ledger-v2.json`. The post-confirmation
+one-factor controls use `mechanism-audit-v2.yaml` with the same recovery runner.
 
 3. From a clean commit, freeze the exact matrix using the v2 protocol and
 validation ledger. Then run it with the explicit test flag:
@@ -93,6 +94,13 @@ and TeReL-S reaches 96.29%. The tuned batch-size-one TeReL-S configuration
 reaches 95.14 ± 0.04% validation accuracy with effective rank 112.8, fixed
 state, and no retained temporal graph.
 
+A separately frozen validation-only audit changes one factor at a time under
+the recovered canonical protocol. Removing temporal coherence loses 8.18
+points; shuffling away class persistence loses 7.55. Removing variance
+expansion collapses median variance to `7.7e-5`, while removing decorrelation
+leaves variance high but collapses effective rank to 2.8. These controls are
+mechanism evidence, not post-test model selection.
+
 ## Analyze results and audit locality
 
 ```bash
@@ -102,6 +110,12 @@ uv run python -m terel.resubmission.analysis_v2 \
   --analysis-output artifacts/confirmatory-analysis-v2.json \
   --results-tex artifacts/generated_results_v2.tex \
   --appendix-tex artifacts/generated_appendix_results_v2.tex
+
+uv run python -m terel.resubmission.mechanism_analysis_v2 \
+  --reference-results artifacts/recovery-v2 \
+  --audit-results artifacts/mechanism-audit-results-v2 \
+  --analysis-output artifacts/mechanism-audit-analysis-v2.json \
+  --results-tex artifacts/generated-mechanism-results-v2.tex
 ```
 
 The analysis preserves every raw seed and reports the mean, sample standard
