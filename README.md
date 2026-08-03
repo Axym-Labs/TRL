@@ -3,21 +3,22 @@
 TeReL trains each layer of a nonlinear encoder from temporal coherence,
 anti-collapse variance expansion, and a same-layer decorrelation signal. The
 corrected formulation is a deep local, soft-constraint form of Slow Feature
-Analysis: gradients do not cross layers or preceding steps, while detached
-running statistics and a dense lateral operator provide bounded-history state.
+Analysis. Canonical TeReL is greedy and layer-local, retaining short gradients
+between adjacent examples inside a chunk. TeReL-S also detaches time; running
+statistics and a dense lateral operator then provide bounded-history state.
 
-This repository contains the leakage-controlled implementation and experiment
-pipeline for the revised paper. The revision explicitly treats label-ordered
-MNIST as label-assisted and tests natural, label-free encoder pretraining on
-chronological PAMAP2 streams.
+This repository contains the validated implementation and frozen experiment
+pipeline for the revised paper. Label-ordered MNIST is explicitly treated as
+controlled temporal supervision; chronological PAMAP2 is a secondary
+natural-order stress test.
 
-> **Correction notice.** Results from the originally cited TeReL experiment
-> commits are not evidence for the revised claims. An optimizer-registration
-> defect left later encoder layers unstepped, one legacy BP dispatcher selected
-> the wrong model, and the original split reused held-out data during model
-> development. The corrected pipeline retires all affected numbers and refuses
-> held-out evaluation until a validation ledger, protocol hash, clean code
-> commit, and explicit test flag agree.
+> **Correction and recovery notice.** An optimizer-registration defect left
+> later encoder layers unstepped in one historical path, and the first revision
+> protocol simultaneously changed the intended schedule, temporal gradient,
+> normalization, lateral timescale, and readout. The v2 recovery reinstates the
+> intended protocol, verifies every layer update, and freezes results behind a
+> hashed manifest. The official MNIST test set was historically observed, so
+> v2 is reported as a sequential confirmation rather than a pristine first use.
 
 ## Quick start
 
@@ -31,111 +32,97 @@ uv sync --extra test
 uv run pytest -q
 ```
 
-The fidelity suite covers the objective signs and detachments, every-layer
-updates, fixed state size, split isolation, boundary-aware SFA controls, the
-IncSFA port, BP construction, and the held-out gate.
+The fidelity suite covers objective signs and detachments, every-layer updates,
+matched readouts, greedy scheduling, fixed streaming state, samplewise graph
+release, split isolation, BP construction, and the frozen test gate.
 
 ## Reproduce the corrected experiments
 
-1. Download MNIST under a local data root and place the extracted PAMAP2
-   archive under another. Update only the two `data_root` values in
-   `configs/resubmission/selection-plan.yaml` for your machine.
-2. Run the bounded validation sweep. It uses seeds 101, 202, and 303 and never
-   evaluates the official MNIST test split or PAMAP2 subject 8.
+1. Download MNIST and update `data_root` in the v2 plans for your machine.
+2. Run candidates from the bounded validation-only recovery plans with seeds
+   101, 202, and 303. For example:
 
 ```bash
-uv run python -m terel.resubmission.selection \
-  --plan configs/resubmission/selection-plan.yaml \
-  --output artifacts/selection-results \
-  --repository . \
-  --protocol /path/to/confirmatory-protocol.md \
+uv run python -m terel.resubmission.recovery \
+  --config configs/resubmission/recovery-v2.yaml \
+  --candidate canonical-recovered-bn \
+  --seed 101 \
+  --output artifacts/recovery-v2 \
   --device cuda
 ```
 
-3. After the selection ledger is complete and the worktree is committed and
-   clean, freeze the exact five-seed test matrix.
+The complete candidate registry is in `recovery-v2.yaml`; the samplewise study
+uses `streaming-recovery-v2.yaml`. The frozen choices and all validation
+records are summarized in `validation-ledger-v2.json`.
+
+3. From a clean commit, freeze the exact matrix using the v2 protocol and
+validation ledger. Then run it with the explicit test flag:
 
 ```bash
 uv run python -m terel.resubmission.confirmatory freeze \
-  --selection-plan configs/resubmission/selection-plan.yaml \
-  --validation-ledger artifacts/selection-results/validation-ledger.json \
-  --protocol /path/to/confirmatory-protocol.md \
+  --selection-plan configs/resubmission/confirmatory-matrix-v2.yaml \
+  --validation-ledger configs/resubmission/validation-ledger-v2.json \
+  --protocol /path/to/confirmatory-protocol-v2.md \
   --repository . \
-  --output artifacts/confirmatory-manifest.json
-```
-
-4. Open the held-out gate explicitly. Runs are written per seed and resume
-   safely when the same manifest is used again.
-
-```bash
+  --output artifacts/confirmatory-manifest-v2.json
 uv run python -m terel.resubmission.confirmatory run \
-  --manifest artifacts/confirmatory-manifest.json \
-  --validation-ledger artifacts/selection-results/validation-ledger.json \
-  --protocol /path/to/confirmatory-protocol.md \
+  --manifest artifacts/confirmatory-manifest-v2.json \
+  --validation-ledger configs/resubmission/validation-ledger-v2.json \
+  --protocol /path/to/confirmatory-protocol-v2.md \
   --repository . \
-  --output artifacts/confirmatory-results \
+  --output artifacts/confirmatory-results-v2 \
   --device cuda \
   --allow-test
 ```
 
-The frozen matrix compares corrected TeReL with the identical random encoder,
-local supervised contrastive learning, supervised BP, and direct covariance on
-MNIST. On PAMAP2 it additionally pairs chronological and shuffled TeReL and
-includes batch SFA and IncSFA.
+Runs are written atomically per seed and resume safely with the same manifest.
+The frozen matrix compares canonical TeReL, a final-layer readout, TeReL-S,
+matched random features, and compute-matched BP.
 
 ### Frozen revised result
 
 The executed matrix used code commit
-`abfa0ec1df78204b66d0c34141f5deb6063a572a`, manifest SHA-256
-`38ca928e0884a8bc40a5c7ffefc46313fc96c170661aea63f93bf9496b2b1af0`,
-and configuration SHA-256
-`c2520fa7e5751ca879da6683e6c193bfa5a800f59ec685e82199d892bbce8c42`.
-All 60 planned runs completed before analysis.
+`02afd90cf6927a588aa424d61cb86c6876b25c17` and configuration SHA-256
+`3e83ea66c03a621bbdc6f1a16a143c6dbf50643ae2b5213a1d78afba68ed0a6b`.
+All 25 planned runs completed before analysis.
 
-On MNIST, TeReL reaches 0.886 mean accuracy versus 0.890 for the matched
-random encoder; the paired difference is -0.0042 with 95% bootstrap interval
-[-0.0092, -0.0003]. Its nearest-centroid accuracy nevertheless rises from
-0.760 to 0.852, showing a repeatable change in class geometry. Direct
-in-batch covariance reaches 0.916 and exposes the cost of the tracked lateral
-proxy. On subject-disjoint PAMAP2, chronological TeReL reaches 0.307 macro-F1
-versus 0.312 after shuffling; the paired interval [-0.0625, 0.0530] does not
-support a natural-order advantage. These held-out results narrowed the claims
-and did not trigger further tuning.
+Canonical TeReL reaches 97.30 ± 0.07% accuracy versus 98.34 ± 0.08% for
+compute-matched BP and 95.13 ± 0.27% for random features. The paired gaps are
+-1.04 points to BP and +2.17 points to random. The last layer retains 97.14%,
+and TeReL-S reaches 96.29%. The tuned batch-size-one TeReL-S configuration
+reaches 95.14 ± 0.04% validation accuracy with effective rank 112.8, fixed
+state, and no retained temporal graph.
 
 ## Analyze results and audit locality
 
 ```bash
-uv run python -m terel.resubmission.analysis \
-  --results artifacts/confirmatory-results \
-  --analysis-output artifacts/confirmatory-analysis.json \
-  --results-tex artifacts/generated_results.tex \
-  --appendix-tex artifacts/generated_appendix_results.tex
-
-uv run python -m terel.resubmission.locality \
-  --manifest artifacts/confirmatory-manifest.json \
-  --repository . \
-  --output artifacts/locality-audit.json \
-  --device cuda
+uv run python -m terel.resubmission.analysis_v2 \
+  --results artifacts/confirmatory-results-v2 \
+  --streaming-results artifacts/streaming-recovery-v2 \
+  --analysis-output artifacts/confirmatory-analysis-v2.json \
+  --results-tex artifacts/generated_results_v2.tex \
+  --appendix-tex artifacts/generated_appendix_results_v2.tex
 ```
 
 The analysis preserves every raw seed and reports the mean, sample standard
 deviation, 10,000-resample percentile interval, and paired primary effects.
-The locality audit compares batch-size-one detached execution with detached
-and undetached minibatches, including throughput, peak memory, parameter,
-optimizer, and dynamic-state bytes.
+It also records representation geometry, parameters, optimizer and dynamic
+state, peak memory, encoder examples, optimizer steps, wall time, and a
+declared operation proxy.
 
 ## Method and claim boundary
 
 - TeReL's temporal, variance, and decorrelation structure is inherited at the
   objective level from SFA and related regularized self-supervised methods.
 - The algorithmic contribution is the particular deep local parameterization,
-  detached population/temporal state, and tracked same-layer lateral proxy.
+  detached population state, canonical within-chunk temporal signal, and
+  tracked same-layer lateral proxy. TeReL-S additionally detaches time.
 - Local credit assignment does not imply sparse communication: a width-`D`
   layer stores `D² + 4D + 1` dynamic state elements.
-- Label-derived MNIST ordering is supervision through the data order. The
-  self-supervised temporal-order contrast is the label-free PAMAP2 encoder run.
-- Hardware relevance is a motivation; this repository does not claim measured
-  energy efficiency or biological plausibility.
+- Label-derived MNIST ordering is supervision through the data order. PAMAP2 is
+  a secondary label-free natural-order stress test, not the paper's headline.
+- Samplewise TeReL-S demonstrates fixed history and no temporal graph. Hardware
+  relevance remains a perspective; no energy-efficiency result is claimed.
 
 ## Repository layout
 
