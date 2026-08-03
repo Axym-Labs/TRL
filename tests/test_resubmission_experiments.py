@@ -83,6 +83,7 @@ def test_random_encoder_experiment_has_matched_probe_and_serializable_audit():
     assert result["probe_training"]["examples"] == 40 * 6
     assert 0.0 <= result["metrics"]["accuracy"] <= 1.0
     assert result["resource_accounting"]["parameter_bytes"] > 0
+    assert result["class_structure_diagnostics"]["nearest_centroid_accuracy"] >= 0.5
 
 
 def test_corrected_terel_experiment_records_all_layer_updates():

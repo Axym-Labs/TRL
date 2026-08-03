@@ -14,6 +14,7 @@ from .baselines import (
 )
 from .data import DatasetSplits, class_chunk_order
 from .evaluation import (
+    class_structure_diagnostics,
     classification_metrics,
     extract_representations,
     fit_linear_probe,
@@ -386,6 +387,11 @@ def run_representation_experiment(
         "metrics": classification_metrics(logits, evaluation_dataset.labels, num_classes=num_classes),
         "representation_diagnostics": representation_diagnostics(
             evaluation_representations, evaluation_dataset.boundaries
+        ),
+        "class_structure_diagnostics": class_structure_diagnostics(
+            evaluation_representations,
+            evaluation_dataset.labels,
+            num_classes=num_classes,
         ),
         "resource_accounting": resource_accounting,
     }

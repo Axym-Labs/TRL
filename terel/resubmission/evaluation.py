@@ -138,6 +138,12 @@ def representation_diagnostics(representations: torch.Tensor, boundaries: torch.
         raise ValueError("representations and boundaries have incompatible shapes")
     variance = representations.var(dim=0, unbiased=False)
     centered = representations - representations.mean(dim=0)
+    covariance = centered.T @ centered / max(len(centered), 1)
+    eigenvalues = torch.linalg.eigvalsh(covariance).clamp_min(0.0)
+    effective_rank = float(
+        eigenvalues.sum().square() / eigenvalues.square().sum().clamp_min(1e-24)
+    )
+    active_feature_fraction = float((variance > 1e-4).to(torch.float64).mean())
     scale = centered.square().mean(dim=0).sqrt()
     standardized = torch.where(scale > 0, centered / scale.clamp_min(1e-12), torch.zeros_like(centered))
     correlation = standardized.T @ standardized / len(standardized)
@@ -153,6 +159,57 @@ def representation_diagnostics(representations: torch.Tensor, boundaries: torch.
     return {
         "median_feature_variance": float(variance.median()),
         "mean_feature_variance": float(variance.mean()),
+        "effective_rank": effective_rank,
+        "active_feature_fraction": active_feature_fraction,
         "mean_absolute_offdiagonal_correlation": mean_offdiagonal,
         "temporal_slowness": slowness,
+    }
+
+
+def class_structure_diagnostics(
+    representations: torch.Tensor,
+    labels: torch.Tensor,
+    *,
+    num_classes: int,
+):
+    """Label-aware post-hoc structure metrics; never used by encoder training."""
+    representations = representations.detach().to(torch.float64).cpu()
+    labels = labels.detach().to(torch.long).cpu()
+    if representations.ndim != 2 or labels.shape != (len(representations),):
+        raise ValueError("representations and labels have incompatible shapes")
+    present = [class_id for class_id in range(num_classes) if (labels == class_id).any()]
+    if len(present) < 2:
+        raise ValueError("class diagnostics require at least two observed classes")
+    centroids = torch.stack([representations[labels == class_id].mean(dim=0) for class_id in present])
+    global_mean = representations.mean(dim=0)
+    within = torch.zeros((), dtype=torch.float64)
+    between = torch.zeros((), dtype=torch.float64)
+    for index, class_id in enumerate(present):
+        class_values = representations[labels == class_id]
+        within += (class_values - centroids[index]).square().sum()
+        between += len(class_values) * (centroids[index] - global_mean).square().sum()
+    within /= len(representations)
+    between /= len(representations)
+
+    distances = torch.cdist(representations, centroids)
+    predicted_indices = distances.argmin(dim=1)
+    present_tensor = torch.as_tensor(present, dtype=torch.long)
+    predicted = present_tensor[predicted_indices]
+
+    normalized_centroids = F.normalize(centroids, dim=1)
+    prototype_cosines = normalized_centroids @ normalized_centroids.T
+    offdiagonal = ~torch.eye(len(present), dtype=torch.bool)
+
+    class_means = centroids
+    feature_scale = representations.std(dim=0, unbiased=False).clamp_min(1e-12)
+    selectivity = (class_means.max(dim=0).values - class_means.min(dim=0).values) / feature_scale
+    return {
+        "observed_classes": present,
+        "between_class_scatter": float(between),
+        "within_class_scatter": float(within),
+        "between_within_scatter_ratio": float(between / within.clamp_min(1e-12)),
+        "nearest_centroid_accuracy": float((predicted == labels).to(torch.float64).mean()),
+        "mean_prototype_cosine": float(prototype_cosines[offdiagonal].mean()),
+        "median_unit_class_selectivity": float(selectivity.median()),
+        "p90_unit_class_selectivity": float(torch.quantile(selectivity, 0.9)),
     }

@@ -3,6 +3,7 @@ import torch
 
 from terel.resubmission.data import TemporalTensorDataset
 from terel.resubmission.evaluation import (
+    class_structure_diagnostics,
     classification_metrics,
     extract_representations,
     fit_linear_probe,
@@ -80,3 +81,19 @@ def test_representation_diagnostics_respect_stream_boundaries():
     assert np.isclose(diagnostics["temporal_slowness"], 2.5)
     assert diagnostics["median_feature_variance"] > 0.0
     assert np.isclose(diagnostics["mean_absolute_offdiagonal_correlation"], 1.0)
+    assert np.isclose(diagnostics["effective_rank"], 1.0)
+    assert diagnostics["active_feature_fraction"] == 1.0
+
+
+def test_class_structure_diagnostics_quantify_separation_and_selectivity():
+    representations = torch.tensor(
+        [[-2.0, -1.0], [-1.0, -1.0], [-2.0, -2.0], [2.0, 1.0], [1.0, 1.0], [2.0, 2.0]]
+    )
+    labels = torch.tensor([0, 0, 0, 1, 1, 1])
+
+    diagnostics = class_structure_diagnostics(representations, labels, num_classes=2)
+
+    assert diagnostics["between_within_scatter_ratio"] > 5.0
+    assert diagnostics["nearest_centroid_accuracy"] == 1.0
+    assert diagnostics["median_unit_class_selectivity"] > 1.0
+    assert diagnostics["mean_prototype_cosine"] < 0.0
