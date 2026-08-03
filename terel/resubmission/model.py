@@ -28,6 +28,8 @@ class LayerLocalEncoder(nn.Module):
         )
         if activation == "relu":
             self.activation = nn.ReLU()
+        elif activation == "leaky_relu":
+            self.activation = nn.LeakyReLU(negative_slope=0.01)
         elif activation == "identity":
             self.activation = nn.Identity()
         else:

@@ -38,6 +38,22 @@ def test_supervised_baseline_uses_every_declared_hidden_layer():
         assert torch.count_nonzero(layer.weight.grad) > 0
 
 
+def test_supervised_baseline_supports_the_matched_leaky_relu_activation():
+    model = SupervisedMLP(
+        input_dim=1,
+        hidden_dims=(1,),
+        output_dim=2,
+        activation="leaky_relu",
+    )
+    with torch.no_grad():
+        model.hidden_layers[0].weight.fill_(1.0)
+        model.hidden_layers[0].bias.zero_()
+
+    hidden = model.representations(torch.tensor([[-2.0]]))[0]
+
+    assert torch.isclose(hidden[0, 0], torch.tensor(-0.02))
+
+
 def test_batch_linear_sfa_satisfies_whitening_and_slow_feature_order():
     """The classical baseline must solve the stated constrained problem on a toy stream."""
     t = np.linspace(0.0, 12.0 * np.pi, 600, endpoint=False)

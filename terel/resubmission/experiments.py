@@ -30,7 +30,7 @@ from .training import train_local_encoder
 class EncoderExperimentConfig:
     method: str
     hidden_dims: tuple[int, ...]
-    activation: str = "relu"
+    activation: str = "leaky_relu"
     epochs: int = 10
     batch_size: int = 256
     order_mode: str = "chronological"
@@ -109,6 +109,56 @@ def _optimizer_bytes(optimizer):
             if torch.is_tensor(value):
                 total += _tensor_bytes(value)
     return total
+
+
+def _operation_proxy(
+    method, *, input_dim, hidden_dims, num_classes, batch_size, training
+):
+    """Coarse multiply-accumulate proxy; excludes optimizer and eigensolver work."""
+    examples = int(training.get("examples", 0)) if isinstance(training, dict) else 0
+    if method == "random":
+        return {
+            "training_examples": 0,
+            "linear_forward_backward_mac_proxy": 0,
+            "same_layer_pairwise_mac_proxy": 0,
+        }
+    if method in {
+        "terel_local",
+        "terel_batch",
+        "terel_direct",
+        "terel_shift",
+        "local_supcon",
+        "bp",
+    }:
+        dims = (input_dim, *hidden_dims)
+        weights = sum(
+            in_features * out_features
+            for in_features, out_features in zip(dims[:-1], dims[1:], strict=True)
+        )
+        if method == "bp":
+            weights += hidden_dims[-1] * num_classes
+        linear = 3 * examples * weights
+        if method.startswith("terel_"):
+            pairwise = 2 * examples * sum(width * width for width in hidden_dims)
+        elif method == "local_supcon":
+            pairwise = (
+                2
+                * int(training.get("steps", 0))
+                * batch_size**2
+                * sum(hidden_dims)
+            )
+        else:
+            pairwise = 0
+        return {
+            "training_examples": examples,
+            "linear_forward_backward_mac_proxy": int(linear),
+            "same_layer_pairwise_mac_proxy": int(pairwise) if pairwise is not None else None,
+        }
+    return {
+        "training_examples": examples,
+        "linear_forward_backward_mac_proxy": None,
+        "same_layer_pairwise_mac_proxy": None,
+    }
 
 
 @torch.no_grad()
@@ -288,7 +338,15 @@ def run_representation_experiment(
         components = encoder.sfa_components or min(encoder.hidden_dims[-1], input_dim)
         model = BatchLinearSFA(n_components=components)
         ordered = train_dataset.features[torch.as_tensor(order)].detach().cpu().numpy()
+        start_time = time.perf_counter()
         model.fit(ordered, boundaries=boundaries)
+        encoder_training = {
+            "epochs": 1,
+            "steps": 1,
+            "examples": int(len(train_dataset)),
+            "valid_temporal_pairs": int(model.derivative_pair_count_),
+            "seconds": time.perf_counter() - start_time,
+        }
         train_representations = torch.from_numpy(
             model.transform(train_dataset.features.detach().cpu().numpy())
         ).to(torch.float32)
@@ -363,12 +421,25 @@ def run_representation_experiment(
         parameter_bytes = int(model.components_.nbytes)
     else:
         parameter_bytes = int(model.components_.nbytes + model.mean_.nbytes)
+    serialized_training = (
+        asdict(encoder_training)
+        if encoder_training is not None and not isinstance(encoder_training, dict)
+        else encoder_training
+    )
     resource_accounting = {
         "parameter_bytes": int(parameter_bytes),
         "dynamic_state_bytes": int(dynamic_state_bytes),
         "optimizer_state_bytes": int(_optimizer_bytes(optimizer)) if optimizer is not None else 0,
         "encoder_batch_size": int(encoder.batch_size),
         "probe_batch_size": int(probe.batch_size),
+        "operation_proxy": _operation_proxy(
+            method,
+            input_dim=input_dim,
+            hidden_dims=encoder.hidden_dims,
+            num_classes=num_classes,
+            batch_size=encoder.batch_size,
+            training=serialized_training,
+        ),
     }
     return {
         "dataset": dataset_name,
@@ -378,11 +449,7 @@ def run_representation_experiment(
         "evaluation_split": evaluation_split,
         "encoder_config": asdict(encoder),
         "probe_config": asdict(probe),
-        "encoder_training": (
-            asdict(encoder_training)
-            if encoder_training is not None and not isinstance(encoder_training, dict)
-            else encoder_training
-        ),
+        "encoder_training": serialized_training,
         "probe_training": asdict(probe_training) if probe_training is not None else None,
         "metrics": classification_metrics(logits, evaluation_dataset.labels, num_classes=num_classes),
         "representation_diagnostics": representation_diagnostics(

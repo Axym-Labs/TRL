@@ -112,6 +112,8 @@ def test_corrected_terel_experiment_records_all_layer_updates():
     assert all(delta > 0.0 for delta in result["encoder_training"]["layer_parameter_delta_l2"])
     assert all(delta > 0.0 for delta in result["encoder_training"]["layer_lateral_delta_l2"])
     assert result["encoder_training"]["examples"] == 12
+    assert result["resource_accounting"]["operation_proxy"]["linear_forward_backward_mac_proxy"] > 0
+    assert result["resource_accounting"]["operation_proxy"]["same_layer_pairwise_mac_proxy"] > 0
     assert "temporal_slowness" in result["representation_diagnostics"]
 
 
@@ -163,3 +165,29 @@ def test_incremental_sfa_experiment_reports_streaming_pair_budget():
     assert result["encoder_training"]["examples"] == 12
     assert result["encoder_training"]["valid_temporal_pairs"] == 10
     assert result["resource_accounting"]["dynamic_state_bytes"] > 0
+
+
+def test_batch_sfa_experiment_reports_its_single_pass_budget():
+    result = run_representation_experiment(
+        splits=_toy_splits(),
+        dataset_name="toy",
+        num_classes=2,
+        seed=101,
+        encoder=EncoderExperimentConfig(
+            method="sfa",
+            hidden_dims=(1,),
+            epochs=10,
+            batch_size=6,
+            order_mode="chronological",
+            sfa_components=1,
+        ),
+        probe=_probe_config(),
+        evaluation_split="validation",
+        device=torch.device("cpu"),
+    )
+
+    assert result["encoder_training"]["epochs"] == 1
+    assert result["encoder_training"]["steps"] == 1
+    assert result["encoder_training"]["examples"] == 6
+    assert result["encoder_training"]["valid_temporal_pairs"] == 5
+    assert result["resource_accounting"]["operation_proxy"]["training_examples"] == 6

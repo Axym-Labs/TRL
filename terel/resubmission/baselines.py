@@ -71,7 +71,7 @@ class SupervisedMLP(nn.Module):
         input_dim: int,
         hidden_dims: tuple[int, ...],
         output_dim: int,
-        activation: str = "relu",
+        activation: str = "leaky_relu",
     ):
         super().__init__()
         if not hidden_dims:
@@ -83,6 +83,8 @@ class SupervisedMLP(nn.Module):
         )
         if activation == "relu":
             self.activation = nn.ReLU()
+        elif activation == "leaky_relu":
+            self.activation = nn.LeakyReLU(negative_slope=0.01)
         elif activation == "identity":
             self.activation = nn.Identity()
         else:
@@ -151,6 +153,7 @@ class BaselineTrainingSummary:
     seconds: float
     final_loss: float
     layer_parameter_delta_l2: tuple[float, ...]
+    peak_device_memory_bytes: int
 
 
 def train_supervised_mlp(
@@ -166,6 +169,8 @@ def train_supervised_mlp(
     if epochs <= 0 or batch_size <= 0:
         raise ValueError("epochs and batch_size must be positive")
     model.to(device)
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
     before = [
         tuple(parameter.detach().cpu().clone() for parameter in layer.parameters())
         for layer in model.hidden_layers
@@ -201,6 +206,9 @@ def train_supervised_mlp(
         seconds=time.perf_counter() - start_time,
         final_loss=final_loss,
         layer_parameter_delta_l2=tuple(deltas),
+        peak_device_memory_bytes=(
+            int(torch.cuda.max_memory_allocated(device)) if device.type == "cuda" else 0
+        ),
     )
 
 
@@ -221,6 +229,8 @@ def train_local_supervised_contrastive(
     if chunk_size < 2 or batch_size % chunk_size:
         raise ValueError("chunk_size must be at least two and divide batch_size")
     model.to(device)
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
     before = [
         tuple(parameter.detach().cpu().clone() for parameter in layer.parameters())
         for layer in model.layers
@@ -257,4 +267,7 @@ def train_local_supervised_contrastive(
         seconds=time.perf_counter() - start_time,
         final_loss=final_loss,
         layer_parameter_delta_l2=tuple(deltas),
+        peak_device_memory_bytes=(
+            int(torch.cuda.max_memory_allocated(device)) if device.type == "cuda" else 0
+        ),
     )

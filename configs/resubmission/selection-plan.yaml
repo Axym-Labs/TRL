@@ -1,5 +1,5 @@
-protocol_version: "1.2"
-protocol_sha256: "58a672df68f60d535d22c9ef367a203eadc8d456bfeb07673b6ea19b59bf537f"
+protocol_version: "1.3"
+protocol_sha256: "67fdc636c128ae657dc8e16fbbd39af07b544341dfdafc189aa3b957191d5c45"
 seeds: [101, 202, 303]
 
 probe:
@@ -18,7 +18,7 @@ datasets:
     encoder_base:
       method: terel_local
       hidden_dims: [512, 256]
-      activation: relu
+      activation: leaky_relu
       epochs: 10
       batch_size: 256
       order_mode: class_chunks
@@ -55,7 +55,7 @@ datasets:
     encoder_base:
       method: terel_local
       hidden_dims: [512, 256]
-      activation: relu
+      activation: leaky_relu
       epochs: 10
       batch_size: 512
       order_mode: chronological

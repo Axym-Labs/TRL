@@ -6,6 +6,25 @@ from terel.resubmission.objective import LossCoefficients
 from terel.resubmission.training import local_train_step, train_local_encoder
 
 
+def test_leaky_relu_keeps_a_gradient_path_for_negative_units():
+    model = LayerLocalEncoder(
+        input_dim=1,
+        hidden_dims=(1,),
+        activation="leaky_relu",
+        statistics_momentum=0.9,
+        lateral_momentum=0.99,
+    )
+    with torch.no_grad():
+        model.layers[0].weight.fill_(1.0)
+        model.layers[0].bias.zero_()
+
+    output = model(torch.tensor([[-2.0]], requires_grad=True))
+    output.sum().backward()
+
+    assert torch.isclose(output[0, 0], torch.tensor(-0.02))
+    assert torch.isclose(model.layers[0].weight.grad[0, 0], torch.tensor(-0.02))
+
+
 def test_one_local_step_changes_every_declared_encoder_layer():
     """Returning early from optimizer registration or loss construction must fail."""
     torch.manual_seed(7)
