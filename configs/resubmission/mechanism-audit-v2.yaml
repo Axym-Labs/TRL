@@ -1,0 +1,48 @@
+protocol_version: mechanism-audit-v2.0
+maximum_candidates: 4
+data_root: /home/davwis/main/data/mnist
+
+encoder_base:
+  method: terel_batch
+  hidden_dims: [512, 256]
+  activation: leaky_relu
+  normalization: batch_norm
+  normalization_momentum: 0.9
+  training_mode: greedy
+  augmentation: none
+  gradient_accumulation_steps: 1
+  epochs: 30
+  batch_size: 256
+  order_mode: class_chunks
+  chunk_size: 16
+  optimizer: adamw
+  learning_rate: 0.0003
+  weight_decay: 0.0001
+  similarity_coefficient: 1.0
+  variance_coefficient: 2.5
+  covariance_coefficient: 1.0
+  variance_target: 1.0
+  statistics_momentum: 0.9
+  lateral_momentum: 0.0
+
+probe_base:
+  epochs: 60
+  batch_size: 2048
+  optimizer: adamw
+  learning_rate: 0.003
+  weight_decay: 0.0001
+  readout: all
+
+candidates:
+  - id: no-temporal
+    description: Remove only the temporal-coherence term from canonical TeReL.
+    encoder: {similarity_coefficient: 0.0}
+  - id: no-variance
+    description: Remove only the gated variance-expansion term from canonical TeReL.
+    encoder: {variance_coefficient: 0.0}
+  - id: no-covariance
+    description: Remove only the lateral decorrelation term from canonical TeReL.
+    encoder: {covariance_coefficient: 0.0}
+  - id: shuffled-order
+    description: Destroy class persistence while retaining every loss coefficient and training setting.
+    encoder: {order_mode: shuffled}
