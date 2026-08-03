@@ -1,7 +1,12 @@
 import hashlib
+import importlib.metadata
 import json
+import os
 from pathlib import Path
+import platform
 import subprocess
+
+import torch
 
 
 class TestGateError(RuntimeError):
@@ -41,6 +46,47 @@ def git_provenance(repository):
     }
 
 
+def environment_record():
+    packages = {}
+    for name in (
+        "matplotlib",
+        "numpy",
+        "pandas",
+        "PyYAML",
+        "scikit-learn",
+        "scipy",
+        "torch",
+        "torchvision",
+    ):
+        try:
+            packages[name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            packages[name] = None
+    cuda_devices = []
+    if torch.cuda.is_available():
+        for index in range(torch.cuda.device_count()):
+            properties = torch.cuda.get_device_properties(index)
+            cuda_devices.append(
+                {
+                    "index": index,
+                    "name": properties.name,
+                    "total_memory_bytes": int(properties.total_memory),
+                    "compute_capability": f"{properties.major}.{properties.minor}",
+                }
+            )
+    return {
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "logical_cpu_count": os.cpu_count(),
+        "torch": str(torch.__version__),
+        "cuda_runtime": torch.version.cuda,
+        "cudnn": torch.backends.cudnn.version(),
+        "cuda_devices": cuda_devices,
+        "packages": packages,
+    }
+
+
 def build_run_manifest(
     *,
     phase: str,
@@ -61,6 +107,7 @@ def build_run_manifest(
         "validation_ledger_sha256": sha256_file(validation_ledger_path),
         "configuration_sha256": canonical_sha256(configuration),
         "configuration": configuration,
+        "environment": environment_record(),
         **provenance,
     }
 

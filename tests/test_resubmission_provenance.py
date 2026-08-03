@@ -62,6 +62,9 @@ def test_test_gate_requires_explicit_flag_and_exact_frozen_sources(tmp_path):
         repository=repo,
         explicit_allow_test=True,
     )
+    assert manifest["environment"]["python"]
+    assert manifest["environment"]["torch"]
+    assert "platform" in manifest["environment"]
 
     protocol.write_text("silently changed protocol\n")
     with pytest.raises(TestGateError, match="protocol hash"):

@@ -289,13 +289,23 @@ def load_mnist_protocol(
 
     train = MNIST(root=str(root), train=True, download=allow_download)
     test = MNIST(root=str(root), train=False, download=allow_download)
-    return mnist_protocol_from_tensors(
+    splits = mnist_protocol_from_tensors(
         train.data,
         train.targets,
         test.data,
         test.targets,
         validation_size=validation_size,
         seed=seed,
+    )
+    raw_files = sorted(Path(train.raw_folder).glob("*.gz"))
+    return DatasetSplits(
+        train=splits.train,
+        validation=splits.validation,
+        test=splits.test,
+        metadata={
+            **splits.metadata,
+            "source_sha256": {path.name: _sha256(path) for path in raw_files},
+        },
     )
 
 
