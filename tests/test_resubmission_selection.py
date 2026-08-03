@@ -1,6 +1,10 @@
 import pytest
 
-from terel.resubmission.selection import load_selection_plan, validate_plan_protocol
+from terel.resubmission.selection import (
+    evaluate_fidelity,
+    load_selection_plan,
+    validate_plan_protocol,
+)
 
 
 def test_selection_plan_is_bounded_and_configuration_ids_are_unique(tmp_path):
@@ -35,3 +39,35 @@ def test_selection_refuses_a_protocol_different_from_the_predeclared_hash(tmp_pa
 
     with pytest.raises(ValueError, match="protocol hash"):
         validate_plan_protocol({"protocol_sha256": "not-the-hash"}, protocol)
+
+
+def test_selection_fidelity_combines_scale_activity_and_effective_rank():
+    results = [
+        {
+            "representation_diagnostics": {
+                "mean_feature_variance": 0.01,
+                "active_feature_fraction": 0.9,
+                "effective_rank": 12.0,
+            }
+        },
+        {
+            "representation_diagnostics": {
+                "mean_feature_variance": 0.02,
+                "active_feature_fraction": 0.8,
+                "effective_rank": 10.0,
+            }
+        },
+    ]
+    thresholds = {
+        "mean_feature_variance": 0.001,
+        "active_feature_fraction": 0.25,
+        "effective_rank": 5.0,
+    }
+
+    valid, by_seed = evaluate_fidelity(results, seeds=(101, 202), thresholds=thresholds)
+
+    assert valid is True
+    assert by_seed["101"]["effective_rank"] == 12.0
+    results[1]["representation_diagnostics"]["effective_rank"] = 4.9
+    valid, _ = evaluate_fidelity(results, seeds=(101, 202), thresholds=thresholds)
+    assert valid is False

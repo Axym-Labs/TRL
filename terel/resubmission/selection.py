@@ -51,6 +51,20 @@ def _metric(result, path):
     return float(current)
 
 
+def evaluate_fidelity(seed_results, *, seeds, thresholds):
+    if not thresholds:
+        raise ValueError("selection requires non-collapse fidelity thresholds")
+    by_seed = {}
+    valid = True
+    for seed, result in zip(seeds, seed_results, strict=True):
+        diagnostics = result["representation_diagnostics"]
+        values = {name: float(diagnostics[name]) for name in thresholds}
+        values["passes"] = all(values[name] >= float(limit) for name, limit in thresholds.items())
+        valid &= values["passes"]
+        by_seed[str(seed)] = values
+    return bool(valid), by_seed
+
+
 def run_selection_plan(plan, *, output_directory, device, repository, protocol_path):
     validate_plan_protocol(plan, protocol_path)
     output_directory = Path(output_directory)
@@ -68,8 +82,17 @@ def run_selection_plan(plan, *, output_directory, device, repository, protocol_p
     for dataset_name, dataset_config in plan["datasets"].items():
         splits = _load_dataset(dataset_name, dataset_config)
         metric_path = dataset_config["primary_metric"]
-        collapse_threshold = float(dataset_config.get("collapse_threshold", 0.05))
+        fidelity_thresholds = {
+            name: float(value)
+            for name, value in dataset_config["fidelity_thresholds"].items()
+        }
         dataset_records = []
+        ledger["datasets"][dataset_name] = {
+            "primary_metric": metric_path,
+            "fidelity_thresholds": fidelity_thresholds,
+            "records": dataset_records,
+            "selected_configuration_id": None,
+        }
         for raw_configuration in dataset_config["configurations"]:
             configuration = dict(dataset_config["encoder_base"])
             override = dict(raw_configuration)
@@ -103,6 +126,11 @@ def run_selection_plan(plan, *, output_directory, device, repository, protocol_p
                 float(result["representation_diagnostics"]["median_feature_variance"])
                 for result in seed_results
             ]
+            fidelity_valid, fidelity_by_seed = evaluate_fidelity(
+                seed_results,
+                seeds=seeds,
+                thresholds=fidelity_thresholds,
+            )
             dataset_records.append(
                 {
                     "configuration_id": configuration_id,
@@ -113,18 +141,16 @@ def run_selection_plan(plan, *, output_directory, device, repository, protocol_p
                     "median_feature_variance_by_seed": dict(
                         zip((str(seed) for seed in seeds), variances, strict=True)
                     ),
-                    "fidelity_valid": bool(min(variances) >= collapse_threshold),
+                    "fidelity_by_seed": fidelity_by_seed,
+                    "fidelity_valid": fidelity_valid,
                 }
             )
             _write_json(output_directory / "validation-ledger.partial.json", ledger)
         valid = [record for record in dataset_records if record["fidelity_valid"]]
         ranked = sorted(valid, key=lambda record: record["mean_validation_metric"], reverse=True)
-        ledger["datasets"][dataset_name] = {
-            "primary_metric": metric_path,
-            "collapse_threshold": collapse_threshold,
-            "records": dataset_records,
-            "selected_configuration_id": ranked[0]["configuration_id"] if ranked else None,
-        }
+        ledger["datasets"][dataset_name]["selected_configuration_id"] = (
+            ranked[0]["configuration_id"] if ranked else None
+        )
         _write_json(output_directory / "validation-ledger.partial.json", ledger)
     ledger["selection_complete"] = all(
         value["selected_configuration_id"] is not None for value in ledger["datasets"].values()
