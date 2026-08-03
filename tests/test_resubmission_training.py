@@ -219,3 +219,64 @@ def test_mnist_augmentation_is_seeded_train_only_and_shape_preserving():
     assert torch.equal(first, second)
     assert not torch.equal(first, different)
     assert not torch.equal(first, features)
+
+
+def test_streaming_normalization_updates_bounded_detached_state_at_batch_one():
+    model = LayerLocalEncoder(
+        input_dim=3,
+        hidden_dims=(4,),
+        activation="relu",
+        normalization="streaming_norm",
+        normalization_momentum=0.9,
+        statistics_momentum=0.9,
+        lateral_momentum=0.9,
+    )
+    normalization = model.normalizations[0]
+    before = normalization.running_mean.clone()
+
+    output = model.forward_local(torch.tensor([[1.0, -1.0, 0.5]]))[0]
+
+    assert output.shape == (1, 4)
+    assert torch.isfinite(output).all()
+    assert not torch.equal(before, normalization.running_mean)
+    assert normalization.running_mean.grad_fn is None
+    assert normalization.running_variance.grad_fn is None
+
+
+def test_gradient_accumulation_releases_each_graph_and_counts_optimizer_steps():
+    torch.manual_seed(43)
+    dataset = TemporalTensorDataset(
+        features=torch.randn(12, 4),
+        labels=torch.arange(12) % 2,
+        boundaries=torch.tensor([True] + [False] * 11),
+    )
+    model = LayerLocalEncoder(
+        input_dim=4,
+        hidden_dims=(5, 3),
+        activation="leaky_relu",
+        statistics_momentum=0.9,
+        lateral_momentum=0.9,
+    )
+    optimizer = torch.optim.AdamW(model.encoder_parameters(), lr=1e-3)
+
+    summary = train_local_encoder(
+        model=model,
+        optimizer=optimizer,
+        dataset=dataset,
+        epochs=2,
+        batch_size=1,
+        order_mode="chronological",
+        order_seed=101,
+        chunk_size=2,
+        coefficients=LossCoefficients(),
+        variance_target=1.0,
+        detach_previous=True,
+        covariance_mode="proxy",
+        device=torch.device("cpu"),
+        gradient_accumulation_steps=4,
+    )
+
+    assert summary.steps == 24
+    assert summary.optimizer_steps == 6
+    assert summary.gradient_accumulation_steps == 4
+    assert all(delta > 0.0 for delta in summary.layer_parameter_delta_l2)

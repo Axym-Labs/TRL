@@ -1,6 +1,6 @@
 import pytest
 
-from terel.resubmission.confirmatory import resolve_confirmatory_configuration
+from terel.resubmission.confirmatory import _probe_for_run, resolve_confirmatory_configuration
 
 
 def _selection_inputs():
@@ -99,3 +99,20 @@ def test_confirmatory_configuration_refuses_incomplete_selection():
             ledger,
             confirmatory_seeds=(1001, 1002, 1003, 1004, 1005),
         )
+
+
+def test_confirmatory_run_can_freeze_a_secondary_readout_without_changing_encoder():
+    global_probe = {
+        "epochs": 60,
+        "batch_size": 2048,
+        "optimizer": "adamw",
+        "learning_rate": 0.003,
+        "weight_decay": 0.0001,
+        "readout": "all",
+    }
+    run = {"id": "terel-last", "encoder": {}, "probe": {"readout": "last"}}
+
+    probe = _probe_for_run(global_probe, run)
+
+    assert probe.readout == "last"
+    assert probe.epochs == 60

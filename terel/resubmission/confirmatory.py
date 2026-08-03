@@ -54,6 +54,12 @@ def _run(identifier, encoder, **overrides):
     return {"id": identifier, "encoder": resolved}
 
 
+def _probe_for_run(global_probe, run):
+    values = dict(global_probe)
+    values.update(run.get("probe", {}))
+    return ProbeExperimentConfig(**values)
+
+
 def resolve_confirmatory_configuration(
     selection_plan,
     validation_ledger,
@@ -177,7 +183,6 @@ def run_confirmatory_manifest(
     if configuration.get("evaluation_split") != "test":
         raise ValueError("confirmatory manifest does not request the test split")
     output_directory = Path(output_directory)
-    probe = ProbeExperimentConfig(**configuration["probe"])
     gate = TestGateContext(
         manifest=manifest,
         protocol_path=str(protocol_path),
@@ -196,6 +201,7 @@ def run_confirmatory_manifest(
             encoder_values = dict(run["encoder"])
             encoder_values["hidden_dims"] = tuple(encoder_values["hidden_dims"])
             encoder = EncoderExperimentConfig(**encoder_values)
+            probe = _probe_for_run(configuration["probe"], run)
             for seed in configuration["seeds"]:
                 if seed_filter is not None and int(seed) != int(seed_filter):
                     continue

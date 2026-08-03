@@ -210,6 +210,9 @@ def test_greedy_training_budget_is_recorded_as_epochs_per_layer():
     assert result["encoder_training"]["epochs_per_layer"] == 2
     assert result["encoder_training"]["examples"] == 2 * 2 * 6
     assert all(delta > 0.0 for delta in result["encoder_training"]["layer_parameter_delta_l2"])
+    proxy = result["resource_accounting"]["operation_proxy"]
+    assert proxy["linear_forward_backward_mac_proxy"] == 672
+    assert proxy["same_layer_pairwise_mac_proxy"] == 480
 
 
 def test_held_out_split_cannot_run_without_gate_context():

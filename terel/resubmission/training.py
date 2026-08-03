@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import math
 import time
 
 import torch
@@ -64,6 +65,8 @@ class EncoderTrainingSummary:
     peak_device_memory_bytes: int
     training_mode: str = "joint"
     epochs_per_layer: int = 0
+    optimizer_steps: int = 0
+    gradient_accumulation_steps: int = 1
 
 
 def _layer_snapshots(model: LayerLocalEncoder):
@@ -107,12 +110,15 @@ def train_local_encoder(
     device: torch.device,
     training_mode: str = "joint",
     augmentation: str = "none",
+    gradient_accumulation_steps: int = 1,
 ) -> EncoderTrainingSummary:
     """Train a TeReL encoder and return the fidelity/compute audit record."""
     if epochs <= 0:
         raise ValueError("epochs must be positive")
     if training_mode not in {"joint", "greedy"}:
         raise ValueError("training_mode must be 'joint' or 'greedy'")
+    if gradient_accumulation_steps <= 0:
+        raise ValueError("gradient_accumulation_steps must be positive")
     model.to(device)
     before = _layer_snapshots(model)
     lateral_before = [state.lateral.detach().cpu().clone() for state in model.states]
@@ -123,17 +129,19 @@ def train_local_encoder(
     steps = 0
     examples = 0
     loss_sum = 0.0
+    optimizer_steps = 0
+    batches_per_epoch = math.ceil(len(dataset) / batch_size)
     stages = range(len(model.layers)) if training_mode == "greedy" else (None,)
     for active_layer in stages:
         for epoch in range(epochs):
             stage_offset = 0 if active_layer is None else active_layer * epochs
-            for features, boundaries in encoder_batches(
+            for batch_index, (features, boundaries) in enumerate(encoder_batches(
                 dataset,
                 batch_size=batch_size,
                 order_mode=order_mode,
                 seed=order_seed + stage_offset + epoch,
                 chunk_size=chunk_size,
-            ):
+            )):
                 features = features.to(device, non_blocking=True)
                 features = _augment(
                     features,
@@ -141,6 +149,10 @@ def train_local_encoder(
                     seed=order_seed + stage_offset * 100_000 + epoch * 10_000 + steps,
                 )
                 boundaries = boundaries.to(device, non_blocking=True)
+                group_start = (batch_index // gradient_accumulation_steps) * gradient_accumulation_steps
+                group_stop = min(group_start + gradient_accumulation_steps, batches_per_epoch)
+                group_size = group_stop - group_start
+                take_step = batch_index + 1 == group_stop
                 metrics = local_train_step(
                     model=model,
                     optimizer=optimizer,
@@ -151,10 +163,14 @@ def train_local_encoder(
                     detach_previous=detach_previous,
                     covariance_mode=covariance_mode,
                     active_layer=active_layer,
+                    zero_grad=batch_index == group_start,
+                    optimizer_step=take_step,
+                    loss_scale=1.0 / group_size,
                 )
                 steps += 1
                 examples += len(features)
                 loss_sum += metrics["loss"]
+                optimizer_steps += int(take_step)
     seconds = time.perf_counter() - start
     peak_memory = torch.cuda.max_memory_allocated(device) if device.type == "cuda" else 0
     return EncoderTrainingSummary(
@@ -173,6 +189,8 @@ def train_local_encoder(
         peak_device_memory_bytes=int(peak_memory),
         training_mode=training_mode,
         epochs_per_layer=int(epochs),
+        optimizer_steps=int(optimizer_steps),
+        gradient_accumulation_steps=int(gradient_accumulation_steps),
     )
 
 
@@ -187,6 +205,9 @@ def local_train_step(
     detach_previous: bool,
     covariance_mode: str = "proxy",
     active_layer: int | None = None,
+    zero_grad: bool = True,
+    optimizer_step: bool = True,
+    loss_scale: float = 1.0,
 ) -> dict[str, float]:
     """Apply one optimizer step using independent per-layer TeReL losses."""
     model.train()
@@ -195,7 +216,8 @@ def local_train_step(
             raise ValueError("active_layer is out of range")
         for index, normalization in enumerate(model.normalizations):
             normalization.train(index == active_layer)
-    optimizer.zero_grad(set_to_none=True)
+    if zero_grad:
+        optimizer.zero_grad(set_to_none=True)
     layer_activations = model.forward_local(x, stop_after=active_layer)
     losses = []
     layer_metrics = []
@@ -249,8 +271,9 @@ def local_train_step(
         layer_metrics.append(metrics)
 
     total = torch.stack(losses).sum()
-    total.backward()
-    optimizer.step()
+    (total * loss_scale).backward()
+    if optimizer_step:
+        optimizer.step()
     for z, state in selected:
         state.update(z)
 

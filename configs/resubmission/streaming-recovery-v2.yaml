@@ -1,0 +1,77 @@
+protocol_version: streaming-recovery-v2.0
+maximum_candidates: 24
+data_root: /home/davwis/main/data/mnist
+
+encoder_base:
+  method: terel_local
+  hidden_dims: [512, 256]
+  activation: leaky_relu
+  normalization: none
+  normalization_momentum: 0.99
+  training_mode: joint
+  augmentation: none
+  gradient_accumulation_steps: 1
+  epochs: 1
+  batch_size: 1
+  order_mode: class_chunks
+  chunk_size: 16
+  optimizer: adamw
+  learning_rate: 0.000006
+  weight_decay: 0.0
+  similarity_coefficient: 1.0
+  variance_coefficient: 2.5
+  covariance_coefficient: 1.0
+  variance_target: 1.0
+  statistics_momentum: 0.99
+  lateral_momentum: 0.99
+
+probe_base:
+  epochs: 60
+  batch_size: 2048
+  optimizer: adamw
+  learning_rate: 0.003
+  weight_decay: 0.0001
+  readout: all
+
+candidates:
+  - id: stream-b0
+    description: Historical batchless scaling with one optimizer step per sample.
+  - id: stream-lr-3e5
+    description: Change only the streaming learning rate to 3e-5.
+    encoder: {learning_rate: 0.00003}
+  - id: stream-lr-3e4
+    description: Change only the streaming learning rate to the minibatch value 3e-4.
+    encoder: {learning_rate: 0.0003}
+  - id: stream-accum-16
+    description: Change only to sixteen immediately-backpropagated samples per optimizer step.
+    encoder: {gradient_accumulation_steps: 16}
+  - id: stream-accum-64
+    description: Change only to sixty-four immediately-backpropagated samples per optimizer step.
+    encoder: {gradient_accumulation_steps: 64}
+  - id: stream-state-90
+    description: Change only activation-statistics momentum from 0.99 to 0.9.
+    encoder: {statistics_momentum: 0.9}
+  - id: stream-lateral-current
+    description: Change only lateral-state momentum from 0.99 to current-sample covariance.
+    encoder: {lateral_momentum: 0.0}
+  - id: stream-layernorm
+    description: Change only to samplewise layer normalization.
+    encoder: {normalization: layer_norm}
+  - id: stream-runningnorm
+    description: Change only to bounded streaming normalization with momentum 0.99.
+    encoder: {normalization: streaming_norm}
+  - id: stream-runningnorm-lateral
+    description: Add independently successful current-sample lateral state to bounded streaming normalization.
+    encoder: {normalization: streaming_norm, lateral_momentum: 0.0}
+  - id: stream-accum64-scaled
+    description: Aggregate 64 immediately released sample gradients and use the matched minibatch-scale learning rate.
+    encoder: {gradient_accumulation_steps: 64, learning_rate: 0.0003}
+  - id: stream-runningnorm-accum64
+    description: Add bounded streaming normalization to the scaled 64-sample gradient-accumulation regime.
+    encoder:
+      normalization: streaming_norm
+      gradient_accumulation_steps: 64
+      learning_rate: 0.0003
+  - id: stream-runningnorm-2ep
+    description: Extend the bounded streaming-normalization finalist from one to two passes.
+    encoder: {normalization: streaming_norm, epochs: 2}

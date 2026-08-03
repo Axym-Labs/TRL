@@ -94,6 +94,28 @@ candidates:
     description: Supervised backprop encoder with the same all-layer readout and short compute schedule.
     encoder: {method: bp, lateral_momentum: 0.0}
     probe: {readout: all}
+  - id: terel-s-final
+    description: Detached concurrent TeReL-S under the recovered current-batch lateral state and matched all-layer readout.
+    encoder: {method: terel_local, lateral_momentum: 0.0}
+    probe: {readout: all}
+  - id: matched-bp-compute
+    description: Backpropagation with the canonical TeReL normalization and the same sixty encoder data passes.
+    encoder:
+      method: bp
+      normalization: batch_norm
+      epochs: 60
+      lateral_momentum: 0.0
+    probe: {readout: all}
+  - id: canonical-recovered-bn-last
+    description: Secondary last-layer-only audit of the deterministic canonical TeReL training.
+    encoder:
+      method: terel_batch
+      training_mode: greedy
+      normalization: batch_norm
+      lateral_momentum: 0.0
+      epochs: 30
+      variance_coefficient: 2.5
+    probe: {readout: last}
   - id: submitted-core
     description: Restore canonical undetached, greedy, long, all-layer submitted-protocol core without augmentation or normalization.
     encoder:

@@ -7,6 +7,37 @@ from torch import nn
 from .state import TeReLState
 
 
+class StreamingNorm(nn.Module):
+    """Per-feature normalization using bounded detached streaming moments."""
+
+    def __init__(self, features: int, *, momentum: float, epsilon: float = 1e-5):
+        super().__init__()
+        if not 0.0 <= momentum < 1.0:
+            raise ValueError("normalization momentum must lie in [0, 1)")
+        self.momentum = float(momentum)
+        self.epsilon = float(epsilon)
+        self.weight = nn.Parameter(torch.ones(features))
+        self.bias = nn.Parameter(torch.zeros(features))
+        self.register_buffer("running_mean", torch.zeros(features))
+        self.register_buffer("running_variance", torch.ones(features))
+
+    def forward(self, values: torch.Tensor) -> torch.Tensor:
+        if self.training:
+            with torch.no_grad():
+                batch_mean = values.detach().mean(dim=0)
+                deviation = (values.detach() - self.running_mean).square().mean(dim=0)
+                self.running_mean.mul_(self.momentum).add_(
+                    batch_mean, alpha=1.0 - self.momentum
+                )
+                self.running_variance.mul_(self.momentum).add_(
+                    deviation, alpha=1.0 - self.momentum
+                )
+        normalized = (values - self.running_mean.detach()) / torch.sqrt(
+            self.running_variance.detach() + self.epsilon
+        )
+        return normalized * self.weight + self.bias
+
+
 class LayerLocalEncoder(nn.Module):
     """MLP whose layer losses do not propagate into earlier layers."""
 
@@ -19,6 +50,7 @@ class LayerLocalEncoder(nn.Module):
         statistics_momentum: float,
         lateral_momentum: float,
         normalization: str = "none",
+        normalization_momentum: float = 0.9,
     ):
         super().__init__()
         if not hidden_dims:
@@ -33,6 +65,13 @@ class LayerLocalEncoder(nn.Module):
         elif normalization == "batch_norm":
             self.normalizations = nn.ModuleList(
                 nn.BatchNorm1d(width, eps=1e-5, momentum=0.1, affine=True)
+                for width in hidden_dims
+            )
+        elif normalization == "layer_norm":
+            self.normalizations = nn.ModuleList(nn.LayerNorm(width) for width in hidden_dims)
+        elif normalization == "streaming_norm":
+            self.normalizations = nn.ModuleList(
+                StreamingNorm(width, momentum=normalization_momentum)
                 for width in hidden_dims
             )
         else:

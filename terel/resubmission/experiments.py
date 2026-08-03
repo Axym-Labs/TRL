@@ -36,8 +36,10 @@ class EncoderExperimentConfig:
     hidden_dims: tuple[int, ...]
     activation: str = "leaky_relu"
     normalization: str = "none"
+    normalization_momentum: float = 0.9
     training_mode: str = "joint"
     augmentation: str = "none"
+    gradient_accumulation_steps: int = 1
     epochs: int = 10
     batch_size: int = 256
     order_mode: str = "chronological"
@@ -142,15 +144,25 @@ def _operation_proxy(
         "bp",
     }:
         dims = (input_dim, *hidden_dims)
-        weights = sum(
+        layer_weights = [
             in_features * out_features
             for in_features, out_features in zip(dims[:-1], dims[1:], strict=True)
-        )
+        ]
+        weights = sum(layer_weights)
         if method == "bp":
             weights += hidden_dims[-1] * num_classes
-        linear = 3 * examples * weights
+        if training.get("training_mode") == "greedy" and method.startswith("terel_"):
+            stage_examples = examples // len(layer_weights)
+            cumulative = 0
+            linear = 0
+            for weight in layer_weights:
+                cumulative += weight
+                linear += stage_examples * (cumulative + 2 * weight)
+        else:
+            stage_examples = examples
+            linear = 3 * examples * weights
         if method.startswith("terel_"):
-            pairwise = 2 * examples * sum(width * width for width in hidden_dims)
+            pairwise = 2 * stage_examples * sum(width * width for width in hidden_dims)
         elif method == "local_supcon":
             pairwise = (
                 2
@@ -246,6 +258,7 @@ def run_representation_experiment(
             hidden_dims=encoder.hidden_dims,
             activation=encoder.activation,
             normalization=encoder.normalization,
+            normalization_momentum=encoder.normalization_momentum,
             statistics_momentum=encoder.statistics_momentum,
             lateral_momentum=encoder.lateral_momentum,
         ).to(device)
@@ -296,6 +309,7 @@ def run_representation_experiment(
                     device=device,
                     training_mode=encoder.training_mode,
                     augmentation=encoder.augmentation,
+                    gradient_accumulation_steps=encoder.gradient_accumulation_steps,
                 )
         train_representations = extract_representations(
             model,

@@ -1,0 +1,98 @@
+schema_version: 2
+evaluation_split: test
+seeds: [1101, 1202, 1303, 1404, 1505]
+selection_seeds: [101, 202, 303]
+selection_policy: >-
+  The matrix was fully resolved from validation-only recovery. Canonical TeReL
+  and BP each receive sixty encoder data passes and the same all-layer probe.
+  Only method-defining or explicitly audited readout fields differ.
+
+probe:
+  epochs: 60
+  batch_size: 2048
+  optimizer: adamw
+  learning_rate: 0.003
+  weight_decay: 0.0001
+  readout: all
+
+datasets:
+  mnist:
+    data_root: /home/davwis/main/data/mnist
+    num_classes: 10
+    runs:
+      - id: terel-all
+        encoder: &canonical_terel
+          method: terel_batch
+          hidden_dims: [512, 256]
+          activation: leaky_relu
+          normalization: batch_norm
+          normalization_momentum: 0.9
+          training_mode: greedy
+          augmentation: none
+          gradient_accumulation_steps: 1
+          epochs: 30
+          batch_size: 256
+          order_mode: class_chunks
+          chunk_size: 16
+          optimizer: adamw
+          learning_rate: 0.0003
+          weight_decay: 0.0001
+          similarity_coefficient: 1.0
+          variance_coefficient: 2.5
+          covariance_coefficient: 1.0
+          variance_target: 1.0
+          statistics_momentum: 0.9
+          lateral_momentum: 0.0
+      - id: terel-last
+        encoder: *canonical_terel
+        probe: {readout: last}
+      - id: terel-s-all
+        encoder:
+          method: terel_local
+          hidden_dims: [512, 256]
+          activation: leaky_relu
+          normalization: none
+          normalization_momentum: 0.9
+          training_mode: joint
+          augmentation: none
+          gradient_accumulation_steps: 1
+          epochs: 10
+          batch_size: 256
+          order_mode: class_chunks
+          chunk_size: 16
+          optimizer: adamw
+          learning_rate: 0.0003
+          weight_decay: 0.0001
+          similarity_coefficient: 1.0
+          variance_coefficient: 5.0
+          covariance_coefficient: 1.0
+          variance_target: 1.0
+          statistics_momentum: 0.9
+          lateral_momentum: 0.0
+      - id: random-all
+        encoder:
+          method: random
+          hidden_dims: [512, 256]
+          activation: leaky_relu
+          normalization: none
+          epochs: 10
+          batch_size: 256
+          order_mode: class_chunks
+          chunk_size: 16
+      - id: bp-all
+        encoder:
+          method: bp
+          hidden_dims: [512, 256]
+          activation: leaky_relu
+          normalization: batch_norm
+          normalization_momentum: 0.9
+          training_mode: joint
+          augmentation: none
+          gradient_accumulation_steps: 1
+          epochs: 60
+          batch_size: 256
+          order_mode: class_chunks
+          chunk_size: 16
+          optimizer: adamw
+          learning_rate: 0.0003
+          weight_decay: 0.0001

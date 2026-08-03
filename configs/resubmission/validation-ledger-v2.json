@@ -1,0 +1,70 @@
+{
+  "schema_version": 2,
+  "selection_complete": true,
+  "selection_split": "mnist_validation",
+  "selection_seeds": [101, 202, 303],
+  "primary_metric": "accuracy",
+  "selected_primary": "canonical-recovered-bn",
+  "records": {
+    "canonical-recovered-bn": {
+      "values": [0.9738, 0.9732, 0.9714],
+      "mean": 0.9728,
+      "sample_sd": 0.001249,
+      "sha256": [
+        "09d5c6fec033564affd5489ae0801112b84dfe4675e50c76678d5cabc3c3f0ae",
+        "023f897fd29cbf18e0d43952d925f60c69d14c195041fa79220a3f274d65ab2c",
+        "f873cdefa9fc675a06425d8b70e1e7d0121d769624aa55f7a28eb2ed74a6cbee"
+      ]
+    },
+    "canonical-recovered-bn-last": {
+      "values": [0.9714, 0.9693, 0.9702],
+      "mean": 0.9703,
+      "sample_sd": 0.001054,
+      "sha256": [
+        "97b7fb41026195da288a04eb5cc0225baa7fe3bf10691a1a5b37a29da4146fc6",
+        "8169239d976b2f3c00e405a0cf9a4e176c8344e8dfd87b47f0ac56b08cc39714",
+        "79439b860c155e5a1892ecc0bae05b62e3b400c4beeb2715f77ef43f0bfd9323"
+      ]
+    },
+    "terel-s-final": {
+      "values": [0.9600, 0.9593, 0.9613],
+      "mean": 0.9602,
+      "sample_sd": 0.001015,
+      "sha256": [
+        "9a640aec916bdf37bf3613ab94c25331973c123ece1fa173dd1090295ade6a25",
+        "13db233a2a734a6ea103422901240ac198eafaea753672df0386861a2599dc84",
+        "7260d898ca3da36884862fa92c32112bb20923c2140188b6676f951f2dcf04f7"
+      ]
+    },
+    "matched-bp-compute": {
+      "values": [0.9826, 0.9839, 0.9835],
+      "mean": 0.983333,
+      "sample_sd": 0.000666,
+      "sha256": [
+        "647d869bfc2672d73caa7da2e99aebbb7626ac7cda7ff33f9432aaf178756956",
+        "770ae7f6f066c54fc4fcf158097d14a76e3fdcfe59255201e6efafdc53175fa3",
+        "2995eb37199448885ce59efc20a126624f0c78aafd8788a74b073b024e6f9010"
+      ]
+    },
+    "matched-random-all": {
+      "values": [0.9498, 0.9486, 0.9473],
+      "mean": 0.948567,
+      "sample_sd": 0.001250,
+      "sha256": [
+        "9cfbbe4af08020c2630c42b2d382245420d060c1cc23d70fa2ebbe7a47844bbf",
+        "b368702a654467bfbbd60e6f11a4581d191ed86e36ef9bc2187e6f498a69e9f2",
+        "135b5c54cfa3c722c76b81284b39b1fa956125c9760781d8f583468c63f22c94"
+      ]
+    },
+    "stream-runningnorm-2ep": {
+      "values": [0.9519, 0.9512, 0.9512],
+      "mean": 0.951433,
+      "sample_sd": 0.000404,
+      "sha256": [
+        "ff4fc3fbde1667b5a565c30109ac924881a8bb291ef747d34039cc75afbce6ad",
+        "8f92230ea2018dd3ad01e52369573db979812edf55e498d6dd1226bbf406edd6",
+        "ec6a7d58d487e56e2c0551e1a3fe38dbcefe5d4c76b31ca7255d744d3c71a087"
+      ]
+    }
+  }
+}
