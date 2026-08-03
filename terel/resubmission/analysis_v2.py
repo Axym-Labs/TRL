@@ -262,7 +262,7 @@ def render_appendix_latex(analysis, streaming=None):
         diagnostics = streaming["representation_diagnostics"]
         streaming_block = "\n".join(
             [
-                r"\begin{table}[t]",
+                r"\begin{table}[H]",
                 r"\centering",
                 r"\caption{Tuned samplewise streaming TeReL on the validation split (three seeds). The serial seed supplies time and memory accounting; concurrent repetition timings are excluded.}",
                 r"\label{tab:streaming-v2}",
@@ -281,7 +281,7 @@ def render_appendix_latex(analysis, streaming=None):
         )
     return "\n".join(
         [
-            r"\begin{table}[t]",
+            r"\begin{table}[H]",
             r"\centering",
             r"\small",
             r"\caption{Raw corrected MNIST test accuracies (\%) in seed order 1101, 1202, 1303, 1404, 1505.}",
@@ -295,7 +295,7 @@ def render_appendix_latex(analysis, streaming=None):
             r"\end{tabular}",
             r"\end{table}",
             "",
-            r"\begin{table}[t]",
+            r"\begin{table}[H]",
             r"\centering",
             r"\small",
             r"\caption{Encoder-fit accounting averaged over five test seeds. Examples count sample presentations. MAC is the declared linear plus same-layer proxy, not a hardware energy measurement.}",
