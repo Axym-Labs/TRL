@@ -64,3 +64,42 @@ def test_supplement_archive_includes_tracked_code_paper_and_artifacts(tmp_path):
         packaged = archive.read("TeReL-supplement/artifacts/result.json").decode()
     assert str(repository) not in packaged
     assert json.loads(packaged)["accuracy"] == 0.97
+
+
+def test_default_supplement_includes_latest_review_control(tmp_path):
+    repository = tmp_path / "workspace" / "code"
+    artifacts = tmp_path / "artifacts"
+    repository.mkdir(parents=True)
+    artifacts.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    for filename in (
+        "latest-review-analysis-v4.json",
+        "latest-review-confirmatory-manifest-v4.json",
+        "latest-review-control-protocol-v4.md",
+        "mechanism-audit-analysis-v2-regenerated.json",
+    ):
+        (artifacts / filename).write_text("{}\n")
+    result = artifacts / "latest-review-confirmatory-results-v4" / "mnist"
+    result.mkdir(parents=True)
+    (result / "seed.json").write_text("{}\n")
+    output = tmp_path / "supplement.zip"
+
+    build_supplement_archive(
+        repository=repository,
+        artifact_root=artifacts,
+        output_path=output,
+    )
+
+    with zipfile.ZipFile(output) as archive:
+        names = set(archive.namelist())
+    assert "TeReL-supplement/artifacts/latest-review-analysis-v4.json" in names
+    assert "TeReL-supplement/artifacts/latest-review-confirmatory-manifest-v4.json" in names
+    assert "TeReL-supplement/artifacts/latest-review-control-protocol-v4.md" in names
+    assert (
+        "TeReL-supplement/artifacts/mechanism-audit-analysis-v2-regenerated.json"
+        in names
+    )
+    assert (
+        "TeReL-supplement/artifacts/latest-review-confirmatory-results-v4/mnist/seed.json"
+        in names
+    )

@@ -13,7 +13,7 @@ METHOD_LABELS = {
     "terel-all": r"\TeReL{} (all layers)",
     "terel-last": r"\TeReL{} (last layer)",
     "terel-s-all": r"\TeReL{}-S (all layers)",
-    "random-all": "Random features (all layers)",
+    "random-all": "Random, no normalization (all layers)",
     "bp-all": "Backpropagation (all layers)",
 }
 CONTRASTS = {
@@ -222,7 +222,7 @@ def render_main_latex(analysis):
     contrast_rows = []
     for name, label in (
         ("terel-minus-bp", r"\TeReL{} $-$ BP"),
-        ("terel-minus-random", r"\TeReL{} $-$ random"),
+        ("terel-minus-random", r"\TeReL{} $-$ random, no normalization"),
         ("terel-last-minus-all", "last $-$ all layers"),
     ):
         summary = analysis["contrasts"][name]

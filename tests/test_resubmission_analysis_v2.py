@@ -2,7 +2,11 @@ import json
 
 import pytest
 
-from terel.resubmission.analysis_v2 import analyze_v2_results, render_appendix_latex
+from terel.resubmission.analysis_v2 import (
+    analyze_v2_results,
+    render_appendix_latex,
+    render_main_latex,
+)
 
 
 def test_v2_analysis_reports_frozen_methods_and_paired_gaps(tmp_path):
@@ -42,6 +46,9 @@ def test_v2_analysis_reports_frozen_methods_and_paired_gaps(tmp_path):
     assert analysis["contrasts"]["terel-minus-bp"]["mean_difference"] == pytest.approx(-0.02)
     assert analysis["contrasts"]["terel-minus-random"]["mean_difference"] == pytest.approx(0.07)
     assert analysis["gates"]["noncollapse"] is True
+    rendered = render_main_latex(analysis)
+    assert "Random, no normalization (all layers)" in rendered
+    assert r"\TeReL{} $-$ random, no normalization" in rendered
 
 
 def test_v2_analysis_separates_training_state_from_inference_encoder_state(tmp_path):
