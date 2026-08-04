@@ -1,0 +1,258 @@
+{
+  "candidate_description": "Secondary last-layer-only audit of the deterministic canonical TeReL training.",
+  "candidate_id": "canonical-recovered-bn-last",
+  "class_structure_diagnostics": {
+    "between_class_scatter": 32.54187400864293,
+    "between_within_scatter_ratio": 1.4465496258768664,
+    "mean_prototype_cosine": 0.35591975285145516,
+    "median_unit_class_selectivity": 2.631987709536754,
+    "nearest_centroid_accuracy": 0.9627,
+    "observed_classes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "p90_unit_class_selectivity": 3.1984936493659175,
+    "within_class_scatter": 22.496202982954536
+  },
+  "dataset": "mnist",
+  "dataset_metadata": {
+    "dataset": "MNIST",
+    "source_sha256": {
+      "t10k-images-idx3-ubyte.gz": "8d422c7b0a1c1c79245a5bcf07fe86e33eeafee792b84584aec276f5a2dbc4e6",
+      "t10k-labels-idx1-ubyte.gz": "f7ae60f92e00ec6debd23a6088c31dbd2371eca3ffa0defaefb259924204aec6",
+      "train-images-idx3-ubyte.gz": "440fcabf73cc546fa21475e81ea370265605f56be210a4024d2ca8f203523609",
+      "train-labels-idx1-ubyte.gz": "3552534a0a558bbed6aed32b30c495cca23d567ec52cac8be1a0730e8010255c"
+    },
+    "source_test_rows": 10000,
+    "source_train_rows": 60000,
+    "split_seed": 1701,
+    "validation_source": "official_train"
+  },
+  "encoder_config": {
+    "activation": "leaky_relu",
+    "augmentation": "none",
+    "batch_size": 256,
+    "chunk_size": 16,
+    "contrastive_temperature": 0.2,
+    "covariance_coefficient": 1.0,
+    "epochs": 30,
+    "gradient_accumulation_steps": 1,
+    "hidden_dims": [
+      512,
+      256
+    ],
+    "incsfa_learning_rate": 0.001,
+    "incsfa_output_dim": null,
+    "incsfa_whitening_dim": null,
+    "lateral_momentum": 0.0,
+    "learning_rate": 0.0003,
+    "method": "terel_batch",
+    "normalization": "batch_norm",
+    "normalization_momentum": 0.9,
+    "optimizer": "adamw",
+    "order_mode": "class_chunks",
+    "sfa_components": null,
+    "similarity_coefficient": 1.0,
+    "statistics_momentum": 0.9,
+    "training_mode": "greedy",
+    "variance_coefficient": 2.5,
+    "variance_target": 1.0,
+    "weight_decay": 0.0001
+  },
+  "encoder_training": {
+    "dynamic_state_numel": 330754,
+    "epochs": 30,
+    "epochs_per_layer": 30,
+    "examples": 3000000,
+    "gradient_accumulation_steps": 1,
+    "layer_lateral_delta_l2": [
+      17.534698486328125,
+      15.957778930664062
+    ],
+    "layer_parameter_delta_l2": [
+      19.796114554378466,
+      9.79770391317611
+    ],
+    "mean_loss": 0.17350597078563507,
+    "optimizer_steps": 11760,
+    "parameter_numel": 534784,
+    "peak_device_memory_bytes": 80382464,
+    "seconds": 109.26177000699681,
+    "steps": 11760,
+    "training_mode": "greedy"
+  },
+  "evaluation_split": "validation",
+  "method": "terel_batch",
+  "metrics": {
+    "accuracy": 0.9702,
+    "balanced_accuracy": 0.9701684220767491,
+    "confusion_matrix": [
+      [
+        975,
+        0,
+        1,
+        1,
+        2,
+        0,
+        3,
+        0,
+        2,
+        3
+      ],
+      [
+        0,
+        1101,
+        4,
+        4,
+        4,
+        0,
+        1,
+        4,
+        5,
+        1
+      ],
+      [
+        2,
+        2,
+        962,
+        11,
+        2,
+        0,
+        1,
+        7,
+        6,
+        0
+      ],
+      [
+        2,
+        1,
+        13,
+        977,
+        0,
+        13,
+        0,
+        3,
+        10,
+        3
+      ],
+      [
+        0,
+        3,
+        3,
+        0,
+        936,
+        0,
+        3,
+        8,
+        4,
+        17
+      ],
+      [
+        1,
+        1,
+        0,
+        7,
+        0,
+        886,
+        3,
+        0,
+        3,
+        3
+      ],
+      [
+        3,
+        1,
+        1,
+        0,
+        2,
+        4,
+        972,
+        0,
+        3,
+        0
+      ],
+      [
+        1,
+        2,
+        12,
+        4,
+        3,
+        0,
+        0,
+        1014,
+        0,
+        8
+      ],
+      [
+        3,
+        9,
+        6,
+        6,
+        1,
+        7,
+        5,
+        2,
+        927,
+        9
+      ],
+      [
+        1,
+        1,
+        1,
+        5,
+        9,
+        2,
+        2,
+        13,
+        5,
+        952
+      ]
+    ],
+    "macro_f1": 0.9701306867067903
+  },
+  "probe_config": {
+    "batch_size": 2048,
+    "epochs": 60,
+    "learning_rate": 0.003,
+    "optimizer": "adamw",
+    "readout": "last",
+    "weight_decay": 0.0001
+  },
+  "probe_training": {
+    "epochs": 60,
+    "examples": 3000000,
+    "final_loss": 0.05894891172647476,
+    "seconds": 4.762617351996596,
+    "steps": 1500
+  },
+  "representation_diagnostics": {
+    "active_feature_fraction": 1.0,
+    "effective_rank": 19.361426058679395,
+    "mean_absolute_offdiagonal_correlation": 0.1558241911219112,
+    "mean_feature_variance": 0.21499248824842762,
+    "median_feature_variance": 0.20940411832796307,
+    "temporal_slowness": 0.43279977649242485
+  },
+  "resource_accounting": {
+    "dynamic_state_bytes": 1329170,
+    "encoder_batch_size": 256,
+    "operation_proxy": {
+      "linear_forward_backward_mac_proxy": 2998272000000,
+      "same_layer_pairwise_mac_proxy": 983040000000,
+      "training_examples": 3000000
+    },
+    "optimizer_state_bytes": 4278304,
+    "parameter_bytes": 2139136,
+    "probe_batch_size": 2048,
+    "probe_input_dim": 256
+  },
+  "seed": 303
+}

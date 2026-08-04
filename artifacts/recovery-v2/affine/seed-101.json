@@ -1,0 +1,254 @@
+{
+  "candidate_description": "Change only train-time input processing to seeded affine augmentation.",
+  "candidate_id": "affine",
+  "class_structure_diagnostics": {
+    "between_class_scatter": 13.46471447213207,
+    "between_within_scatter_ratio": 0.2795173268980793,
+    "mean_prototype_cosine": 0.998258570762024,
+    "median_unit_class_selectivity": 1.3999535730905512,
+    "nearest_centroid_accuracy": 0.8031,
+    "observed_classes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "p90_unit_class_selectivity": 1.9385074003312726,
+    "within_class_scatter": 48.17130523376006
+  },
+  "dataset": "mnist",
+  "dataset_metadata": {
+    "dataset": "MNIST",
+    "source_sha256": {
+      "t10k-images-idx3-ubyte.gz": "8d422c7b0a1c1c79245a5bcf07fe86e33eeafee792b84584aec276f5a2dbc4e6",
+      "t10k-labels-idx1-ubyte.gz": "f7ae60f92e00ec6debd23a6088c31dbd2371eca3ffa0defaefb259924204aec6",
+      "train-images-idx3-ubyte.gz": "440fcabf73cc546fa21475e81ea370265605f56be210a4024d2ca8f203523609",
+      "train-labels-idx1-ubyte.gz": "3552534a0a558bbed6aed32b30c495cca23d567ec52cac8be1a0730e8010255c"
+    },
+    "source_test_rows": 10000,
+    "source_train_rows": 60000,
+    "split_seed": 1701,
+    "validation_source": "official_train"
+  },
+  "encoder_config": {
+    "activation": "leaky_relu",
+    "augmentation": "mnist_affine",
+    "batch_size": 256,
+    "chunk_size": 16,
+    "contrastive_temperature": 0.2,
+    "covariance_coefficient": 1.0,
+    "epochs": 10,
+    "hidden_dims": [
+      512,
+      256
+    ],
+    "incsfa_learning_rate": 0.001,
+    "incsfa_output_dim": null,
+    "incsfa_whitening_dim": null,
+    "lateral_momentum": 0.99,
+    "learning_rate": 0.0003,
+    "method": "terel_local",
+    "normalization": "none",
+    "optimizer": "adamw",
+    "order_mode": "class_chunks",
+    "sfa_components": null,
+    "similarity_coefficient": 1.0,
+    "statistics_momentum": 0.9,
+    "training_mode": "joint",
+    "variance_coefficient": 5.0,
+    "variance_target": 1.0,
+    "weight_decay": 0.0001
+  },
+  "encoder_training": {
+    "dynamic_state_numel": 330754,
+    "epochs": 10,
+    "epochs_per_layer": 10,
+    "examples": 500000,
+    "layer_lateral_delta_l2": [
+      22.610448837280273,
+      20.29009437561035
+    ],
+    "layer_parameter_delta_l2": [
+      17.23624067332963,
+      16.754274854743173
+    ],
+    "mean_loss": 2.357307533404733,
+    "parameter_numel": 533248,
+    "peak_device_memory_bytes": 82596864,
+    "seconds": 29.246287390997168,
+    "steps": 1960,
+    "training_mode": "joint"
+  },
+  "evaluation_split": "validation",
+  "method": "terel_local",
+  "metrics": {
+    "accuracy": 0.9018,
+    "balanced_accuracy": 0.9012016677620525,
+    "confusion_matrix": [
+      [
+        935,
+        0,
+        4,
+        1,
+        1,
+        9,
+        12,
+        3,
+        19,
+        3
+      ],
+      [
+        0,
+        1082,
+        6,
+        1,
+        4,
+        9,
+        2,
+        4,
+        16,
+        0
+      ],
+      [
+        4,
+        5,
+        877,
+        19,
+        23,
+        5,
+        14,
+        14,
+        30,
+        2
+      ],
+      [
+        5,
+        3,
+        21,
+        852,
+        3,
+        73,
+        3,
+        12,
+        38,
+        12
+      ],
+      [
+        2,
+        3,
+        5,
+        0,
+        901,
+        6,
+        7,
+        2,
+        5,
+        43
+      ],
+      [
+        3,
+        2,
+        1,
+        19,
+        13,
+        819,
+        13,
+        11,
+        16,
+        7
+      ],
+      [
+        9,
+        3,
+        8,
+        0,
+        20,
+        12,
+        929,
+        0,
+        5,
+        0
+      ],
+      [
+        2,
+        6,
+        8,
+        5,
+        19,
+        3,
+        0,
+        953,
+        8,
+        40
+      ],
+      [
+        4,
+        18,
+        5,
+        16,
+        23,
+        24,
+        5,
+        7,
+        846,
+        27
+      ],
+      [
+        1,
+        7,
+        2,
+        8,
+        85,
+        12,
+        0,
+        38,
+        14,
+        824
+      ]
+    ],
+    "macro_f1": 0.9008720661643641
+  },
+  "probe_config": {
+    "batch_size": 2048,
+    "epochs": 60,
+    "learning_rate": 0.003,
+    "optimizer": "adamw",
+    "readout": "last",
+    "weight_decay": 0.0001
+  },
+  "probe_training": {
+    "epochs": 60,
+    "examples": 3000000,
+    "final_loss": 0.29215478897094727,
+    "seconds": 4.843278189997363,
+    "steps": 1500
+  },
+  "representation_diagnostics": {
+    "active_feature_fraction": 0.7890625,
+    "effective_rank": 32.881901696564604,
+    "mean_absolute_offdiagonal_correlation": 0.1144325421514171,
+    "mean_feature_variance": 0.24076570197614128,
+    "median_feature_variance": 0.2949654959285874,
+    "temporal_slowness": 0.4776358852163644
+  },
+  "resource_accounting": {
+    "dynamic_state_bytes": 1323010,
+    "encoder_batch_size": 256,
+    "operation_proxy": {
+      "linear_forward_backward_mac_proxy": 798720000000,
+      "same_layer_pairwise_mac_proxy": 327680000000,
+      "training_examples": 500000
+    },
+    "optimizer_state_bytes": 4266000,
+    "parameter_bytes": 2132992,
+    "probe_batch_size": 2048,
+    "probe_input_dim": 256
+  },
+  "seed": 101
+}

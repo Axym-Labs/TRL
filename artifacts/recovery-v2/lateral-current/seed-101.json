@@ -1,0 +1,254 @@
+{
+  "candidate_description": "Change only the lateral covariance timescale to the current minibatch.",
+  "candidate_id": "lateral-current",
+  "class_structure_diagnostics": {
+    "between_class_scatter": 19.34896643299659,
+    "between_within_scatter_ratio": 0.1262906478007817,
+    "mean_prototype_cosine": 0.9324607722652833,
+    "median_unit_class_selectivity": 1.0262287018466558,
+    "nearest_centroid_accuracy": 0.9181,
+    "observed_classes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "p90_unit_class_selectivity": 1.4612645161783946,
+    "within_class_scatter": 153.20981220651262
+  },
+  "dataset": "mnist",
+  "dataset_metadata": {
+    "dataset": "MNIST",
+    "source_sha256": {
+      "t10k-images-idx3-ubyte.gz": "8d422c7b0a1c1c79245a5bcf07fe86e33eeafee792b84584aec276f5a2dbc4e6",
+      "t10k-labels-idx1-ubyte.gz": "f7ae60f92e00ec6debd23a6088c31dbd2371eca3ffa0defaefb259924204aec6",
+      "train-images-idx3-ubyte.gz": "440fcabf73cc546fa21475e81ea370265605f56be210a4024d2ca8f203523609",
+      "train-labels-idx1-ubyte.gz": "3552534a0a558bbed6aed32b30c495cca23d567ec52cac8be1a0730e8010255c"
+    },
+    "source_test_rows": 10000,
+    "source_train_rows": 60000,
+    "split_seed": 1701,
+    "validation_source": "official_train"
+  },
+  "encoder_config": {
+    "activation": "leaky_relu",
+    "augmentation": "none",
+    "batch_size": 256,
+    "chunk_size": 16,
+    "contrastive_temperature": 0.2,
+    "covariance_coefficient": 1.0,
+    "epochs": 10,
+    "hidden_dims": [
+      512,
+      256
+    ],
+    "incsfa_learning_rate": 0.001,
+    "incsfa_output_dim": null,
+    "incsfa_whitening_dim": null,
+    "lateral_momentum": 0.0,
+    "learning_rate": 0.0003,
+    "method": "terel_local",
+    "normalization": "none",
+    "optimizer": "adamw",
+    "order_mode": "class_chunks",
+    "sfa_components": null,
+    "similarity_coefficient": 1.0,
+    "statistics_momentum": 0.9,
+    "training_mode": "joint",
+    "variance_coefficient": 5.0,
+    "variance_target": 1.0,
+    "weight_decay": 0.0001
+  },
+  "encoder_training": {
+    "dynamic_state_numel": 330754,
+    "epochs": 10,
+    "epochs_per_layer": 10,
+    "examples": 500000,
+    "layer_lateral_delta_l2": [
+      52.92234420776367,
+      30.9141788482666
+    ],
+    "layer_parameter_delta_l2": [
+      18.845298845825692,
+      9.063069161061966
+    ],
+    "mean_loss": 1.8259418073112064,
+    "parameter_numel": 533248,
+    "peak_device_memory_bytes": 81448448,
+    "seconds": 27.868042737005453,
+    "steps": 1960,
+    "training_mode": "joint"
+  },
+  "evaluation_split": "validation",
+  "method": "terel_local",
+  "metrics": {
+    "accuracy": 0.9489,
+    "balanced_accuracy": 0.9483946433299181,
+    "confusion_matrix": [
+      [
+        969,
+        0,
+        0,
+        1,
+        0,
+        1,
+        5,
+        2,
+        6,
+        3
+      ],
+      [
+        0,
+        1102,
+        3,
+        6,
+        2,
+        1,
+        0,
+        4,
+        4,
+        2
+      ],
+      [
+        3,
+        7,
+        922,
+        14,
+        11,
+        1,
+        2,
+        10,
+        20,
+        3
+      ],
+      [
+        3,
+        3,
+        13,
+        942,
+        0,
+        23,
+        1,
+        6,
+        24,
+        7
+      ],
+      [
+        0,
+        4,
+        4,
+        0,
+        926,
+        0,
+        4,
+        5,
+        4,
+        27
+      ],
+      [
+        2,
+        2,
+        1,
+        23,
+        4,
+        842,
+        9,
+        2,
+        12,
+        7
+      ],
+      [
+        3,
+        3,
+        3,
+        1,
+        8,
+        0,
+        961,
+        0,
+        6,
+        1
+      ],
+      [
+        1,
+        4,
+        11,
+        5,
+        5,
+        1,
+        0,
+        994,
+        4,
+        19
+      ],
+      [
+        2,
+        13,
+        6,
+        19,
+        4,
+        8,
+        3,
+        0,
+        907,
+        13
+      ],
+      [
+        3,
+        2,
+        2,
+        5,
+        16,
+        4,
+        1,
+        22,
+        12,
+        924
+      ]
+    ],
+    "macro_f1": 0.9485763674353007
+  },
+  "probe_config": {
+    "batch_size": 2048,
+    "epochs": 60,
+    "learning_rate": 0.003,
+    "optimizer": "adamw",
+    "readout": "last",
+    "weight_decay": 0.0001
+  },
+  "probe_training": {
+    "epochs": 60,
+    "examples": 3000000,
+    "final_loss": 0.12698206305503845,
+    "seconds": 4.621066047999193,
+    "steps": 1500
+  },
+  "representation_diagnostics": {
+    "active_feature_fraction": 1.0,
+    "effective_rank": 108.94066592320145,
+    "mean_absolute_offdiagonal_correlation": 0.05704260548390495,
+    "mean_feature_variance": 0.6740577290605829,
+    "median_feature_variance": 0.6807935834825664,
+    "temporal_slowness": 1.3443010074473842
+  },
+  "resource_accounting": {
+    "dynamic_state_bytes": 1323010,
+    "encoder_batch_size": 256,
+    "operation_proxy": {
+      "linear_forward_backward_mac_proxy": 798720000000,
+      "same_layer_pairwise_mac_proxy": 327680000000,
+      "training_examples": 500000
+    },
+    "optimizer_state_bytes": 4266000,
+    "parameter_bytes": 2132992,
+    "probe_batch_size": 2048,
+    "probe_input_dim": 256
+  },
+  "seed": 101
+}

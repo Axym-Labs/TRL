@@ -1,0 +1,235 @@
+{
+  "candidate_description": "Random encoder with the same all-layer readout.",
+  "candidate_id": "matched-random-all",
+  "class_structure_diagnostics": {
+    "between_class_scatter": 8.776732528185148,
+    "between_within_scatter_ratio": 0.22183576636630042,
+    "mean_prototype_cosine": 0.8249968897974902,
+    "median_unit_class_selectivity": 1.1875576145921163,
+    "nearest_centroid_accuracy": 0.8029,
+    "observed_classes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "p90_unit_class_selectivity": 1.6451361321166296,
+    "within_class_scatter": 39.564100379074134
+  },
+  "dataset": "mnist",
+  "dataset_metadata": {
+    "dataset": "MNIST",
+    "source_sha256": {
+      "t10k-images-idx3-ubyte.gz": "8d422c7b0a1c1c79245a5bcf07fe86e33eeafee792b84584aec276f5a2dbc4e6",
+      "t10k-labels-idx1-ubyte.gz": "f7ae60f92e00ec6debd23a6088c31dbd2371eca3ffa0defaefb259924204aec6",
+      "train-images-idx3-ubyte.gz": "440fcabf73cc546fa21475e81ea370265605f56be210a4024d2ca8f203523609",
+      "train-labels-idx1-ubyte.gz": "3552534a0a558bbed6aed32b30c495cca23d567ec52cac8be1a0730e8010255c"
+    },
+    "source_test_rows": 10000,
+    "source_train_rows": 60000,
+    "split_seed": 1701,
+    "validation_source": "official_train"
+  },
+  "encoder_config": {
+    "activation": "leaky_relu",
+    "augmentation": "none",
+    "batch_size": 256,
+    "chunk_size": 16,
+    "contrastive_temperature": 0.2,
+    "covariance_coefficient": 1.0,
+    "epochs": 10,
+    "hidden_dims": [
+      512,
+      256
+    ],
+    "incsfa_learning_rate": 0.001,
+    "incsfa_output_dim": null,
+    "incsfa_whitening_dim": null,
+    "lateral_momentum": 0.99,
+    "learning_rate": 0.0003,
+    "method": "random",
+    "normalization": "none",
+    "optimizer": "adamw",
+    "order_mode": "class_chunks",
+    "sfa_components": null,
+    "similarity_coefficient": 1.0,
+    "statistics_momentum": 0.9,
+    "training_mode": "joint",
+    "variance_coefficient": 5.0,
+    "variance_target": 1.0,
+    "weight_decay": 0.0001
+  },
+  "encoder_training": null,
+  "evaluation_split": "validation",
+  "method": "random",
+  "metrics": {
+    "accuracy": 0.9473,
+    "balanced_accuracy": 0.9468399908678613,
+    "confusion_matrix": [
+      [
+        972,
+        0,
+        1,
+        0,
+        0,
+        5,
+        5,
+        1,
+        2,
+        1
+      ],
+      [
+        0,
+        1104,
+        3,
+        2,
+        3,
+        5,
+        1,
+        3,
+        3,
+        0
+      ],
+      [
+        9,
+        7,
+        930,
+        8,
+        8,
+        3,
+        6,
+        10,
+        9,
+        3
+      ],
+      [
+        1,
+        3,
+        25,
+        933,
+        4,
+        27,
+        1,
+        4,
+        15,
+        9
+      ],
+      [
+        1,
+        4,
+        2,
+        1,
+        923,
+        2,
+        8,
+        7,
+        4,
+        22
+      ],
+      [
+        6,
+        1,
+        6,
+        17,
+        3,
+        849,
+        7,
+        4,
+        5,
+        6
+      ],
+      [
+        6,
+        3,
+        6,
+        0,
+        8,
+        4,
+        957,
+        1,
+        1,
+        0
+      ],
+      [
+        1,
+        3,
+        16,
+        3,
+        9,
+        3,
+        0,
+        988,
+        4,
+        17
+      ],
+      [
+        6,
+        11,
+        10,
+        23,
+        2,
+        22,
+        4,
+        0,
+        886,
+        11
+      ],
+      [
+        5,
+        4,
+        2,
+        9,
+        13,
+        4,
+        0,
+        21,
+        2,
+        931
+      ]
+    ],
+    "macro_f1": 0.9467325274253973
+  },
+  "probe_config": {
+    "batch_size": 2048,
+    "epochs": 60,
+    "learning_rate": 0.003,
+    "optimizer": "adamw",
+    "readout": "all",
+    "weight_decay": 0.0001
+  },
+  "probe_training": {
+    "epochs": 60,
+    "examples": 3000000,
+    "final_loss": 0.1328488290309906,
+    "seconds": 4.840369553996425,
+    "steps": 1500
+  },
+  "representation_diagnostics": {
+    "active_feature_fraction": 0.9973958333333334,
+    "effective_rank": 37.679289275857876,
+    "mean_absolute_offdiagonal_correlation": 0.096261603688601,
+    "mean_feature_variance": 0.06294379284799384,
+    "median_feature_variance": 0.041654510361411316,
+    "temporal_slowness": 0.12431483733722379
+  },
+  "resource_accounting": {
+    "dynamic_state_bytes": 0,
+    "encoder_batch_size": 256,
+    "operation_proxy": {
+      "linear_forward_backward_mac_proxy": 0,
+      "same_layer_pairwise_mac_proxy": 0,
+      "training_examples": 0
+    },
+    "optimizer_state_bytes": 0,
+    "parameter_bytes": 2132992,
+    "probe_batch_size": 2048,
+    "probe_input_dim": 768
+  },
+  "seed": 303
+}

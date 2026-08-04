@@ -1,0 +1,254 @@
+{
+  "candidate_description": "Test canonical undetached TeReL with greedy scheduling under recovered state and readout conditions.",
+  "candidate_id": "canonical-recovered",
+  "class_structure_diagnostics": {
+    "between_class_scatter": 59.292111430452195,
+    "between_within_scatter_ratio": 0.17020858033366618,
+    "mean_prototype_cosine": 0.9280857944549985,
+    "median_unit_class_selectivity": 1.1605198364426672,
+    "nearest_centroid_accuracy": 0.9541,
+    "observed_classes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "p90_unit_class_selectivity": 1.8709101899771705,
+    "within_class_scatter": 348.34972076154844
+  },
+  "dataset": "mnist",
+  "dataset_metadata": {
+    "dataset": "MNIST",
+    "source_sha256": {
+      "t10k-images-idx3-ubyte.gz": "8d422c7b0a1c1c79245a5bcf07fe86e33eeafee792b84584aec276f5a2dbc4e6",
+      "t10k-labels-idx1-ubyte.gz": "f7ae60f92e00ec6debd23a6088c31dbd2371eca3ffa0defaefb259924204aec6",
+      "train-images-idx3-ubyte.gz": "440fcabf73cc546fa21475e81ea370265605f56be210a4024d2ca8f203523609",
+      "train-labels-idx1-ubyte.gz": "3552534a0a558bbed6aed32b30c495cca23d567ec52cac8be1a0730e8010255c"
+    },
+    "source_test_rows": 10000,
+    "source_train_rows": 60000,
+    "split_seed": 1701,
+    "validation_source": "official_train"
+  },
+  "encoder_config": {
+    "activation": "leaky_relu",
+    "augmentation": "none",
+    "batch_size": 256,
+    "chunk_size": 16,
+    "contrastive_temperature": 0.2,
+    "covariance_coefficient": 1.0,
+    "epochs": 30,
+    "hidden_dims": [
+      512,
+      256
+    ],
+    "incsfa_learning_rate": 0.001,
+    "incsfa_output_dim": null,
+    "incsfa_whitening_dim": null,
+    "lateral_momentum": 0.0,
+    "learning_rate": 0.0003,
+    "method": "terel_batch",
+    "normalization": "none",
+    "optimizer": "adamw",
+    "order_mode": "class_chunks",
+    "sfa_components": null,
+    "similarity_coefficient": 1.0,
+    "statistics_momentum": 0.9,
+    "training_mode": "greedy",
+    "variance_coefficient": 5.0,
+    "variance_target": 1.0,
+    "weight_decay": 0.0001
+  },
+  "encoder_training": {
+    "dynamic_state_numel": 330754,
+    "epochs": 30,
+    "epochs_per_layer": 30,
+    "examples": 3000000,
+    "layer_lateral_delta_l2": [
+      44.85403060913086,
+      25.260635375976562
+    ],
+    "layer_parameter_delta_l2": [
+      25.855034962432953,
+      11.507352237244026
+    ],
+    "mean_loss": 0.29508353361470285,
+    "parameter_numel": 533248,
+    "peak_device_memory_bytes": 79869952,
+    "seconds": 103.32089927799825,
+    "steps": 11760,
+    "training_mode": "greedy"
+  },
+  "evaluation_split": "validation",
+  "method": "terel_batch",
+  "metrics": {
+    "accuracy": 0.9663,
+    "balanced_accuracy": 0.9659619563633888,
+    "confusion_matrix": [
+      [
+        970,
+        0,
+        2,
+        1,
+        0,
+        3,
+        5,
+        3,
+        2,
+        1
+      ],
+      [
+        0,
+        1107,
+        3,
+        2,
+        2,
+        1,
+        0,
+        2,
+        4,
+        3
+      ],
+      [
+        3,
+        3,
+        960,
+        10,
+        3,
+        1,
+        0,
+        5,
+        5,
+        3
+      ],
+      [
+        0,
+        2,
+        13,
+        967,
+        0,
+        16,
+        0,
+        5,
+        14,
+        5
+      ],
+      [
+        0,
+        3,
+        4,
+        1,
+        934,
+        1,
+        1,
+        8,
+        5,
+        17
+      ],
+      [
+        2,
+        1,
+        0,
+        15,
+        0,
+        865,
+        6,
+        2,
+        6,
+        7
+      ],
+      [
+        4,
+        1,
+        3,
+        0,
+        3,
+        6,
+        965,
+        0,
+        4,
+        0
+      ],
+      [
+        0,
+        0,
+        7,
+        4,
+        3,
+        1,
+        0,
+        1019,
+        2,
+        8
+      ],
+      [
+        1,
+        6,
+        6,
+        11,
+        1,
+        10,
+        1,
+        2,
+        932,
+        5
+      ],
+      [
+        4,
+        0,
+        2,
+        5,
+        4,
+        3,
+        0,
+        20,
+        9,
+        944
+      ]
+    ],
+    "macro_f1": 0.9660264274625282
+  },
+  "probe_config": {
+    "batch_size": 2048,
+    "epochs": 60,
+    "learning_rate": 0.003,
+    "optimizer": "adamw",
+    "readout": "all",
+    "weight_decay": 0.0001
+  },
+  "probe_training": {
+    "epochs": 60,
+    "examples": 3000000,
+    "final_loss": 0.0490550734102726,
+    "seconds": 4.702855024996097,
+    "steps": 1500
+  },
+  "representation_diagnostics": {
+    "active_feature_fraction": 1.0,
+    "effective_rank": 160.09052245453717,
+    "mean_absolute_offdiagonal_correlation": 0.04942999450832649,
+    "mean_feature_variance": 0.5307836356666674,
+    "median_feature_variance": 0.5520913366281875,
+    "temporal_slowness": 1.0593219750504048
+  },
+  "resource_accounting": {
+    "dynamic_state_bytes": 1323010,
+    "encoder_batch_size": 256,
+    "operation_proxy": {
+      "linear_forward_backward_mac_proxy": 4792320000000,
+      "same_layer_pairwise_mac_proxy": 1966080000000,
+      "training_examples": 3000000
+    },
+    "optimizer_state_bytes": 4266000,
+    "parameter_bytes": 2132992,
+    "probe_batch_size": 2048,
+    "probe_input_dim": 768
+  },
+  "seed": 202
+}

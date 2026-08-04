@@ -1,0 +1,248 @@
+{
+  "candidate_description": "Backpropagation with the canonical TeReL normalization and the same sixty encoder data passes.",
+  "candidate_id": "matched-bp-compute",
+  "class_structure_diagnostics": {
+    "between_class_scatter": 148.11341688428013,
+    "between_within_scatter_ratio": 0.8501731468172012,
+    "mean_prototype_cosine": 0.4256664514373933,
+    "median_unit_class_selectivity": 1.829330837409947,
+    "nearest_centroid_accuracy": 0.9727,
+    "observed_classes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "p90_unit_class_selectivity": 2.5107497380283967,
+    "within_class_scatter": 174.21559059913065
+  },
+  "dataset": "mnist",
+  "dataset_metadata": {
+    "dataset": "MNIST",
+    "source_sha256": {
+      "t10k-images-idx3-ubyte.gz": "8d422c7b0a1c1c79245a5bcf07fe86e33eeafee792b84584aec276f5a2dbc4e6",
+      "t10k-labels-idx1-ubyte.gz": "f7ae60f92e00ec6debd23a6088c31dbd2371eca3ffa0defaefb259924204aec6",
+      "train-images-idx3-ubyte.gz": "440fcabf73cc546fa21475e81ea370265605f56be210a4024d2ca8f203523609",
+      "train-labels-idx1-ubyte.gz": "3552534a0a558bbed6aed32b30c495cca23d567ec52cac8be1a0730e8010255c"
+    },
+    "source_test_rows": 10000,
+    "source_train_rows": 60000,
+    "split_seed": 1701,
+    "validation_source": "official_train"
+  },
+  "encoder_config": {
+    "activation": "leaky_relu",
+    "augmentation": "none",
+    "batch_size": 256,
+    "chunk_size": 16,
+    "contrastive_temperature": 0.2,
+    "covariance_coefficient": 1.0,
+    "epochs": 60,
+    "gradient_accumulation_steps": 1,
+    "hidden_dims": [
+      512,
+      256
+    ],
+    "incsfa_learning_rate": 0.001,
+    "incsfa_output_dim": null,
+    "incsfa_whitening_dim": null,
+    "lateral_momentum": 0.0,
+    "learning_rate": 0.0003,
+    "method": "bp",
+    "normalization": "batch_norm",
+    "normalization_momentum": 0.9,
+    "optimizer": "adamw",
+    "order_mode": "class_chunks",
+    "sfa_components": null,
+    "similarity_coefficient": 1.0,
+    "statistics_momentum": 0.9,
+    "training_mode": "joint",
+    "variance_coefficient": 5.0,
+    "variance_target": 1.0,
+    "weight_decay": 0.0001
+  },
+  "encoder_training": {
+    "epochs": 60,
+    "examples": 3000000,
+    "final_loss": 0.03853838890790939,
+    "layer_parameter_delta_l2": [
+      17.192270030394035,
+      10.219065722090198
+    ],
+    "peak_device_memory_bytes": 236357632,
+    "seconds": 44.41348973099957,
+    "steps": 11760
+  },
+  "evaluation_split": "validation",
+  "method": "bp",
+  "metrics": {
+    "accuracy": 0.9826,
+    "balanced_accuracy": 0.9825094503368199,
+    "confusion_matrix": [
+      [
+        979,
+        0,
+        0,
+        0,
+        0,
+        1,
+        6,
+        0,
+        0,
+        1
+      ],
+      [
+        0,
+        1111,
+        2,
+        2,
+        1,
+        1,
+        0,
+        5,
+        1,
+        1
+      ],
+      [
+        1,
+        0,
+        980,
+        4,
+        4,
+        0,
+        1,
+        2,
+        1,
+        0
+      ],
+      [
+        1,
+        1,
+        7,
+        992,
+        0,
+        9,
+        0,
+        2,
+        8,
+        2
+      ],
+      [
+        0,
+        1,
+        1,
+        0,
+        950,
+        0,
+        0,
+        6,
+        3,
+        13
+      ],
+      [
+        2,
+        2,
+        0,
+        5,
+        1,
+        886,
+        4,
+        2,
+        1,
+        1
+      ],
+      [
+        3,
+        1,
+        0,
+        0,
+        3,
+        0,
+        978,
+        0,
+        1,
+        0
+      ],
+      [
+        0,
+        1,
+        4,
+        1,
+        5,
+        1,
+        0,
+        1028,
+        2,
+        2
+      ],
+      [
+        0,
+        3,
+        2,
+        7,
+        1,
+        2,
+        2,
+        3,
+        951,
+        4
+      ],
+      [
+        3,
+        0,
+        1,
+        2,
+        3,
+        2,
+        0,
+        7,
+        2,
+        971
+      ]
+    ],
+    "macro_f1": 0.9825125485954672
+  },
+  "probe_config": {
+    "batch_size": 2048,
+    "epochs": 60,
+    "learning_rate": 0.003,
+    "optimizer": "adamw",
+    "readout": "all",
+    "weight_decay": 0.0001
+  },
+  "probe_training": {
+    "epochs": 60,
+    "examples": 3000000,
+    "final_loss": 0.0006663051899522543,
+    "seconds": 4.735774072003551,
+    "steps": 1500
+  },
+  "representation_diagnostics": {
+    "active_feature_fraction": 1.0,
+    "effective_rank": 21.135056490036828,
+    "mean_absolute_offdiagonal_correlation": 0.15181088693168426,
+    "mean_feature_variance": 0.41969922849402447,
+    "median_feature_variance": 0.32219740138046105,
+    "temporal_slowness": 0.8392317794645304
+  },
+  "resource_accounting": {
+    "dynamic_state_bytes": 0,
+    "encoder_batch_size": 256,
+    "operation_proxy": {
+      "linear_forward_backward_mac_proxy": 4815360000000,
+      "same_layer_pairwise_mac_proxy": 0,
+      "training_examples": 3000000
+    },
+    "optimizer_state_bytes": 4298872,
+    "parameter_bytes": 2149416,
+    "probe_batch_size": 2048,
+    "probe_input_dim": 768
+  },
+  "seed": 101
+}
