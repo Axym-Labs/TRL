@@ -78,7 +78,8 @@ uv run python -m terel.resubmission.confirmatory run \
 
 Runs are written atomically per seed and resume safely with the same manifest.
 The frozen matrix compares canonical TeReL, a final-layer readout, TeReL-S,
-matched random features, and data-presentation-matched BP.
+an unnormalized random encoder, and data-presentation-matched BP. A later
+one-row manifest adds the normalization-matched random control described below.
 
 ### Frozen revised result
 
@@ -88,8 +89,9 @@ The executed matrix used code commit
 All 25 planned runs completed before analysis.
 
 Canonical TeReL reaches 97.30 ± 0.07% accuracy versus 98.34 ± 0.08% for
-data-presentation-matched BP and 95.13 ± 0.27% for random features. The paired gaps are
--1.04 points to BP and +2.17 points to random. The last layer retains 97.14%,
+data-presentation-matched BP and 95.13 ± 0.27% for the original
+no-normalization random encoder. The paired gaps are -1.04 points to BP and
++2.17 points to that random reference. The last layer retains 97.14%,
 and TeReL-S reaches 96.29%. The tuned batch-size-one TeReL-S configuration
 reaches 95.14 ± 0.04% validation accuracy with effective rank 112.8, fixed
 state, and no retained temporal graph.
@@ -109,6 +111,17 @@ at learning rate `1e-3` and temperature `0.1`; its frozen five-seed test mean is
 measures about 0.76 cosine alignment between TeReL's lagged and same-batch
 lateral directions; the exact direct-covariance control reaches 96.93%.
 
+The latest bounded review patch adds one normalization-matched random row
+without rerunning the v2 matrix. Its hidden weights, biases, and BatchNorm
+affine parameters remain at their seed-specific initialization. One
+no-gradient pass over the 50,000-example training subset calibrates only the
+BatchNorm running statistics before the unchanged all-layer probe. Across the
+same five test seeds, this control reaches 95.35 ± 0.19%; canonical TeReL is
+1.95 points higher with a paired 95% Student-t interval [1.64, 2.25]. The
+calibration treatment, five seeds, and stopping rule are frozen in
+`latest-review-confirmatory-matrix-v4.yaml` and
+`latest-review-validation-ledger-v4.json`.
+
 ## Analyze results and audit locality
 
 ```bash
@@ -122,8 +135,14 @@ uv run python -m terel.resubmission.analysis_v2 \
 uv run python -m terel.resubmission.mechanism_analysis_v2 \
   --reference-results artifacts/recovery-v2 \
   --audit-results artifacts/mechanism-audit-results-v2 \
-  --analysis-output artifacts/mechanism-audit-analysis-v2.json \
+  --analysis-output artifacts/mechanism-audit-analysis-v2-regenerated.json \
   --results-tex artifacts/generated-mechanism-results-v2.tex
+
+uv run python -m terel.resubmission.latest_review_analysis \
+  --control-results artifacts/latest-review-confirmatory-results-v4 \
+  --reference-results artifacts/confirmatory-results-v2 \
+  --analysis-output artifacts/latest-review-analysis-v4.json \
+  --results-tex artifacts/generated-latest-review-v4.tex
 ```
 
 The analysis preserves every raw seed and reports the mean, sample standard
@@ -131,6 +150,9 @@ deviation, 10,000-resample percentile interval, and paired primary effects.
 It also records representation geometry, parameters, optimizer and dynamic
 state, peak memory, encoder examples, optimizer steps, wall time, and a
 declared operation proxy.
+The original frozen mechanism JSON is retained for execution provenance; the
+`-regenerated` JSON is the byte-exact output of the reporting source supplied
+in the anonymous archive and produces the same numerical mechanism table.
 
 ## Method and claim boundary
 
