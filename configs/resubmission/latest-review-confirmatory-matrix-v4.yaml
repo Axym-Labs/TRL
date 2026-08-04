@@ -1,0 +1,34 @@
+schema_version: 4
+evaluation_split: test
+seeds: [1101, 1202, 1303, 1404, 1505]
+selection_seeds: []
+selection_policy: >-
+  The treatment is fixed a priori by the latest review: one train-only,
+  no-gradient BatchNorm calibration pass for an otherwise untrained encoder.
+  No validation outcome or existing test result selects this configuration.
+
+probe:
+  epochs: 60
+  batch_size: 2048
+  optimizer: adamw
+  learning_rate: 0.003
+  weight_decay: 0.0001
+  readout: all
+
+datasets:
+  mnist:
+    data_root: ../../data/mnist
+    num_classes: 10
+    runs:
+      - id: random-bn-calibrated-all
+        encoder:
+          method: random
+          hidden_dims: [512, 256]
+          activation: leaky_relu
+          normalization: batch_norm
+          normalization_momentum: 0.9
+          batch_norm_calibration_passes: 1
+          epochs: 0
+          batch_size: 256
+          order_mode: chronological
+          chunk_size: 16

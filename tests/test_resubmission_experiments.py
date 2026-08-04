@@ -151,6 +151,33 @@ def test_random_encoder_experiment_has_matched_probe_and_serializable_audit():
     assert result["class_structure_diagnostics"]["nearest_centroid_accuracy"] >= 0.5
 
 
+def test_calibrated_random_encoder_serializes_normalization_separately():
+    result = run_representation_experiment(
+        splits=_toy_splits(),
+        dataset_name="toy",
+        num_classes=2,
+        seed=101,
+        encoder=EncoderExperimentConfig(
+            method="random",
+            hidden_dims=(4, 2),
+            normalization="batch_norm",
+            batch_norm_calibration_passes=1,
+            epochs=1,
+            batch_size=3,
+            order_mode="chronological",
+        ),
+        probe=_probe_config(),
+        evaluation_split="validation",
+        device=torch.device("cpu"),
+    )
+
+    assert result["encoder_training"] is None
+    assert result["normalization_calibration"]["passes"] == 1
+    assert result["normalization_calibration"]["batches"] == 2
+    assert result["normalization_calibration"]["examples"] == 6
+    assert result["resource_accounting"]["normalization_calibration_examples"] == 6
+
+
 def test_corrected_terel_experiment_records_all_layer_updates():
     result = run_representation_experiment(
         splits=_toy_splits(),

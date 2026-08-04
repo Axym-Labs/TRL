@@ -1,8 +1,10 @@
 import numpy as np
+import pytest
 import torch
 
 from terel.resubmission.data import TemporalTensorDataset
 from terel.resubmission.evaluation import (
+    calibrate_batch_normalization,
     class_structure_diagnostics,
     classification_metrics,
     extract_representations,
@@ -10,6 +12,100 @@ from terel.resubmission.evaluation import (
     representation_diagnostics,
 )
 from terel.resubmission.model import LayerLocalEncoder
+
+
+def test_batch_norm_calibration_updates_only_running_statistics():
+    """A calibration pass must not turn the untrained control into learned weights."""
+    model = LayerLocalEncoder(
+        input_dim=2,
+        hidden_dims=(2, 2),
+        activation="identity",
+        normalization="batch_norm",
+        statistics_momentum=0.9,
+        lateral_momentum=0.9,
+    )
+    with torch.no_grad():
+        for layer in model.layers:
+            layer.weight.copy_(torch.eye(2))
+            layer.bias.zero_()
+    dataset = TemporalTensorDataset(
+        features=torch.tensor(
+            [
+                [-4.0, -2.0],
+                [-2.0, -1.0],
+                [0.0, 1.0],
+                [1.0, 3.0],
+                [3.0, 5.0],
+                [6.0, 8.0],
+            ]
+        ),
+        labels=torch.tensor([0, 0, 0, 1, 1, 1]),
+        boundaries=torch.tensor([True, False, False, True, False, False]),
+    )
+    parameters_before = [parameter.detach().clone() for parameter in model.parameters()]
+    means_before = [normalization.running_mean.clone() for normalization in model.normalizations]
+    variances_before = [normalization.running_var.clone() for normalization in model.normalizations]
+
+    summary = calibrate_batch_normalization(
+        model,
+        dataset,
+        batch_size=3,
+        passes=2,
+        device=torch.device("cpu"),
+    )
+
+    assert summary.passes == 2
+    assert summary.batches == 4
+    assert summary.examples == 12
+    assert summary.seconds >= 0.0
+    assert model.training is False
+    assert all(parameter.grad is None for parameter in model.parameters())
+    assert all(
+        torch.equal(before, after)
+        for before, after in zip(parameters_before, model.parameters(), strict=True)
+    )
+    assert all(
+        not torch.equal(before, normalization.running_mean)
+        for before, normalization in zip(means_before, model.normalizations, strict=True)
+    )
+    assert all(
+        not torch.equal(before, normalization.running_var)
+        for before, normalization in zip(variances_before, model.normalizations, strict=True)
+    )
+    assert all(int(normalization.num_batches_tracked) == 4 for normalization in model.normalizations)
+
+
+def test_batch_norm_calibration_rejects_invalid_treatment():
+    dataset = TemporalTensorDataset(
+        features=torch.randn(6, 2),
+        labels=torch.arange(6) % 2,
+        boundaries=torch.tensor([True, False, False, True, False, False]),
+    )
+    unnormalized = LayerLocalEncoder(
+        input_dim=2,
+        hidden_dims=(2,),
+        activation="identity",
+        normalization="none",
+        statistics_momentum=0.9,
+        lateral_momentum=0.9,
+    )
+
+    with pytest.raises(ValueError, match="BatchNorm"):
+        calibrate_batch_normalization(
+            unnormalized,
+            dataset,
+            batch_size=3,
+            passes=1,
+            device=torch.device("cpu"),
+        )
+    with pytest.raises(ValueError, match="passes"):
+        calibrate_batch_normalization(
+            unnormalized,
+            dataset,
+            batch_size=3,
+            passes=0,
+            device=torch.device("cpu"),
+        )
 
 
 def test_representation_extraction_supports_matched_last_and_all_layer_readouts():

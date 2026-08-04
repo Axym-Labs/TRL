@@ -19,6 +19,48 @@ class ProbeTrainingSummary:
     final_loss: float
 
 
+@dataclass(frozen=True)
+class NormalizationCalibrationSummary:
+    passes: int
+    batches: int
+    examples: int
+    seconds: float
+
+
+@torch.no_grad()
+def calibrate_batch_normalization(model, dataset, *, batch_size, passes, device):
+    """Calibrate BatchNorm buffers without updating encoder parameters."""
+    if passes <= 0:
+        raise ValueError("calibration passes must be positive")
+    if batch_size <= 1:
+        raise ValueError("BatchNorm calibration batch_size must exceed one")
+    normalizations = [
+        module for module in model.modules() if isinstance(module, nn.BatchNorm1d)
+    ]
+    if not normalizations:
+        raise ValueError("BatchNorm calibration requires BatchNorm modules")
+
+    model.to(device)
+    model.train()
+    start_time = time.perf_counter()
+    batches = 0
+    for _ in range(passes):
+        for start in range(0, len(dataset), batch_size):
+            features = dataset.features[start : start + batch_size].to(device)
+            if len(features) <= 1:
+                raise ValueError("every BatchNorm calibration batch must contain at least two examples")
+            model(features)
+            batches += 1
+    seconds = time.perf_counter() - start_time
+    model.eval()
+    return NormalizationCalibrationSummary(
+        passes=int(passes),
+        batches=batches,
+        examples=int(passes * len(dataset)),
+        seconds=seconds,
+    )
+
+
 @torch.no_grad()
 def extract_representations(
     model: nn.Module,

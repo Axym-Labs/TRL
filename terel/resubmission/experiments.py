@@ -18,6 +18,7 @@ from .baselines import (
 )
 from .data import DatasetSplits, class_chunk_order
 from .evaluation import (
+    calibrate_batch_normalization,
     class_structure_diagnostics,
     classification_metrics,
     extract_representations,
@@ -59,6 +60,7 @@ class EncoderExperimentConfig:
     incsfa_output_dim: int | None = None
     incsfa_learning_rate: float = 0.001
     audit_lateral_proxy: bool = False
+    batch_norm_calibration_passes: int = 0
 
 
 @dataclass(frozen=True)
@@ -266,6 +268,7 @@ def run_representation_experiment(
     input_dim = train_dataset.features.shape[1]
     method = encoder.method
     encoder_training = None
+    normalization_calibration = None
     probe_training = None
     optimizer = None
 
@@ -287,6 +290,8 @@ def run_representation_experiment(
             statistics_momentum=encoder.statistics_momentum,
             lateral_momentum=encoder.lateral_momentum,
         ).to(device)
+        if encoder.batch_norm_calibration_passes and method != "random":
+            raise ValueError("BatchNorm calibration is only defined for random encoders")
         if method != "random":
             optimizer = _optimizer(
                 encoder.optimizer,
@@ -331,6 +336,14 @@ def run_representation_experiment(
                     gradient_accumulation_steps=encoder.gradient_accumulation_steps,
                     audit_lateral_proxy=encoder.audit_lateral_proxy,
                 )
+        elif encoder.batch_norm_calibration_passes:
+            normalization_calibration = calibrate_batch_normalization(
+                model,
+                train_dataset,
+                batch_size=encoder.batch_size,
+                passes=encoder.batch_norm_calibration_passes,
+                device=device,
+            )
         train_representations = extract_representations(
             model,
             train_dataset,
@@ -508,6 +521,11 @@ def run_representation_experiment(
         if encoder_training is not None and not isinstance(encoder_training, dict)
         else encoder_training
     )
+    serialized_calibration = (
+        asdict(normalization_calibration)
+        if normalization_calibration is not None
+        else None
+    )
     resource_accounting = {
         "parameter_bytes": int(parameter_bytes),
         "dynamic_state_bytes": int(dynamic_state_bytes),
@@ -515,6 +533,21 @@ def run_representation_experiment(
         "encoder_batch_size": int(encoder.batch_size),
         "probe_batch_size": int(probe.batch_size),
         "probe_input_dim": int(evaluation_representations.shape[1]),
+        "normalization_calibration_examples": (
+            int(normalization_calibration.examples)
+            if normalization_calibration is not None
+            else 0
+        ),
+        "normalization_calibration_batches": (
+            int(normalization_calibration.batches)
+            if normalization_calibration is not None
+            else 0
+        ),
+        "normalization_calibration_seconds": (
+            float(normalization_calibration.seconds)
+            if normalization_calibration is not None
+            else 0.0
+        ),
         "operation_proxy": _operation_proxy(
             method,
             input_dim=input_dim,
@@ -533,6 +566,7 @@ def run_representation_experiment(
         "encoder_config": asdict(encoder),
         "probe_config": asdict(probe),
         "encoder_training": serialized_training,
+        "normalization_calibration": serialized_calibration,
         "probe_training": asdict(probe_training) if probe_training is not None else None,
         "metrics": classification_metrics(logits, evaluation_dataset.labels, num_classes=num_classes),
         "representation_diagnostics": representation_diagnostics(

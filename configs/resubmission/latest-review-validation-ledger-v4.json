@@ -1,0 +1,19 @@
+{
+  "schema_version": 4,
+  "selection_complete": true,
+  "selection_split": "none",
+  "selection_seeds": [],
+  "primary_metric": "mnist_test_accuracy",
+  "selected_primary": "random-bn-calibrated-all",
+  "selection_rule": "A priori reviewer-requested architecture match; no metric-based selection.",
+  "treatment": {
+    "batch_norm_affine_parameters": "initial gamma=1 and beta=0; never optimized",
+    "calibration_data": "50,000-example MNIST training subset only",
+    "calibration_order": "stored dataset order",
+    "calibration_passes": 1,
+    "calibration_batch_size": 256,
+    "calibration_gradients": false,
+    "evaluation_mode_after_calibration": true
+  },
+  "stopping_rule": "Exactly seeds 1101, 1202, 1303, 1404, and 1505; no test-dependent changes."
+}
