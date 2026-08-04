@@ -116,7 +116,7 @@ def test_review_patch_analysis_refuses_an_incomplete_candidate(tmp_path):
 
 
 def test_review_patch_analysis_compares_frozen_local_supcon_and_renders_tables(
-    tmp_path,
+    tmp_path, monkeypatch,
 ):
     review_patch_analysis = _analysis_module()
     comparator = tmp_path / "comparator"
@@ -140,3 +140,24 @@ def test_review_patch_analysis_compares_frozen_local_supcon_and_renders_tables(
     main_tex = review_patch_analysis.render_confirmatory_latex(analysis)
     assert "Local SupCon" in main_tex
     assert "Student-$t$" in main_tex
+    monkeypatch.setattr(
+        review_patch_analysis, "LOCAL_SUPCON_CANDIDATES", ("candidate-a",)
+    )
+    validation = {
+        "selected_local_supcon": "candidate-a",
+        "local_supcon_candidates": {
+            "candidate-a": {
+                "mean": 0.95,
+                "sample_sd": 0.01,
+                "encoder_config": {
+                    "learning_rate": 1e-3,
+                    "contrastive_temperature": 0.1,
+                },
+            }
+        },
+    }
+    appendix_tex = review_patch_analysis.render_validation_appendix_latex(
+        validation, analysis
+    )
+    assert "five-seed evaluation values" in appendix_tex
+    assert "confirmatory raw values" not in appendix_tex

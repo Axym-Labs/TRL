@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from terel.resubmission.mechanism_analysis_v2 import analyze_mechanism_audit
+from terel.resubmission.mechanism_analysis_v2 import analyze_mechanism_audit, render_latex
 
 
 def _write(root, candidate, seed, accuracy, rank=20.0, variance=0.2):
@@ -36,3 +36,6 @@ def test_mechanism_analysis_pairs_each_intervention_with_full(tmp_path):
     assert result["methods"]["no-temporal"]["accuracy_difference_from_full"][
         "mean_difference"
     ] == pytest.approx(-0.10)
+    rendered = render_latex(result)
+    assert r"\label{tab:mechanism-audit}" in rendered
+    assert "recovered canonical protocol" not in rendered

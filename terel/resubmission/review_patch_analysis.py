@@ -285,7 +285,7 @@ def render_validation_appendix_latex(validation, confirmatory):
             r"\begin{table}[H]",
             r"\centering",
             r"\small",
-            r"\caption{Local SupCon confirmatory raw values and resource state. Inference retains encoder parameters and batch-normalization buffers; optimizer state is training-only.}",
+            r"\caption{Local SupCon five-seed evaluation values and resource state. Inference retains encoder parameters and batch-normalization buffers; optimizer state is training-only.}",
             r"\label{tab:local-supcon-raw}",
             r"\begin{tabular}{lc}",
             r"\toprule",

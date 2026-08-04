@@ -49,6 +49,8 @@ def test_v2_analysis_reports_frozen_methods_and_paired_gaps(tmp_path):
     rendered = render_main_latex(analysis)
     assert "Random, no normalization (all layers)" in rendered
     assert r"\TeReL{} $-$ random, no normalization" in rendered
+    assert r"\label{tab:mnist-primary}" in rendered
+    assert "Corrected MNIST" not in rendered
 
 
 def test_v2_analysis_separates_training_state_from_inference_encoder_state(tmp_path):
@@ -107,3 +109,5 @@ def test_v2_analysis_separates_training_state_from_inference_encoder_state(tmp_p
     rendered = render_appendix_latex(analysis)
     assert "Training-state decomposition" in rendered
     assert "Inference encoder" in rendered
+    assert r"\label{tab:encoder-resources}" in rendered
+    assert "Raw corrected MNIST" not in rendered
