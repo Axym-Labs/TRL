@@ -2,8 +2,8 @@
 
 TeReL trains each layer of a nonlinear encoder from temporal coherence,
 anti-collapse variance expansion, and a same-layer decorrelation signal. The
-formulation is a deep local, soft-constraint form of Slow Feature
-Analysis. Canonical TeReL is greedy and layer-local, retaining short gradients
+formulation is a deep neuron-local, soft-constraint form of Slow Feature
+Analysis. Canonical TeReL is neuron-local in space, retaining short gradients
 between adjacent examples inside a chunk. TeReL-S also detaches time; running
 statistics and a dense lateral operator then provide bounded-history state.
 

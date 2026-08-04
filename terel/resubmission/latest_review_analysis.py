@@ -89,7 +89,7 @@ def render_normalization_control_latex(analysis):
             r"\begin{table}[H]",
             r"\centering",
             r"\small",
-            r"\caption{Normalization-matched random-control audit on MNIST test accuracy (\%, five paired seeds). The BatchNorm-calibrated encoder keeps all weights and affine normalization parameters at initialization; only train-split running statistics are updated. Values are mean $\pm$ sample SD, and contrasts use 95\% Student-$t$ intervals.}",
+            r"\caption{MNIST accuracy of the normalization-matched random control across five paired seeds. Hidden weights and affine BatchNorm parameters remain at initialization; only running statistics are calibrated on the training split. Method rows report mean $\pm$ sample standard deviation, and contrasts report 95\% Student-$t$ intervals.}",
             r"\label{tab:normalization-control}",
             r"\begin{tabular}{lc}",
             r"\toprule",

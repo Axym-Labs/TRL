@@ -160,5 +160,5 @@ def test_review_patch_analysis_compares_frozen_local_supcon_and_renders_tables(
     appendix_tex = review_patch_analysis.render_validation_appendix_latex(
         validation, analysis
     )
-    assert "five-seed evaluation values" in appendix_tex
+    assert "test values and resource state across five seeds" in appendix_tex
     assert "confirmatory raw values" not in appendix_tex

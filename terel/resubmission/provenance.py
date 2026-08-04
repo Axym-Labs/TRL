@@ -74,6 +74,12 @@ def environment_record():
                     "compute_capability": f"{properties.major}.{properties.minor}",
                 }
             )
+    try:
+        cudnn_version = torch.backends.cudnn.version()
+        cudnn_error = None
+    except RuntimeError as error:
+        cudnn_version = None
+        cudnn_error = f"{type(error).__name__}: {error}"
     return {
         "python": platform.python_version(),
         "platform": platform.platform(),
@@ -81,7 +87,8 @@ def environment_record():
         "logical_cpu_count": os.cpu_count(),
         "torch": str(torch.__version__),
         "cuda_runtime": torch.version.cuda,
-        "cudnn": torch.backends.cudnn.version(),
+        "cudnn": cudnn_version,
+        "cudnn_error": cudnn_error,
         "cuda_devices": cuda_devices,
         "packages": packages,
     }

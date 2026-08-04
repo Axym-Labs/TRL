@@ -108,7 +108,7 @@ def test_v2_analysis_separates_training_state_from_inference_encoder_state(tmp_p
     assert random["encoder_examples"] == 0
     assert bp["inference_encoder_bytes"] == 240  # excludes the 2-by-10 supervised head
     rendered = render_appendix_latex(analysis)
-    assert "Training-state decomposition" in rendered
+    assert "Training state in MiB" in rendered
     assert "Inference encoder" in rendered
     assert r"\label{tab:encoder-resources}" in rendered
     assert "Raw corrected MNIST" not in rendered

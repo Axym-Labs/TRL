@@ -2,11 +2,13 @@ import json
 import subprocess
 
 import pytest
+import torch
 
 from terel.resubmission.provenance import (
     TestGateError,
     assert_test_gate,
     build_run_manifest,
+    environment_record,
     sha256_file,
 )
 
@@ -19,6 +21,20 @@ def _git(directory, *args):
         text=True,
         capture_output=True,
     ).stdout.strip()
+
+
+def test_environment_record_reports_an_incompatible_cudnn_runtime(monkeypatch):
+    def incompatible_runtime():
+        raise RuntimeError("compiled and runtime cuDNN versions differ")
+
+    monkeypatch.setattr(torch.backends.cudnn, "version", incompatible_runtime)
+
+    record = environment_record()
+
+    assert record["cudnn"] is None
+    assert record["cudnn_error"] == (
+        "RuntimeError: compiled and runtime cuDNN versions differ"
+    )
 
 
 def test_test_gate_requires_explicit_flag_and_exact_frozen_sources(tmp_path):

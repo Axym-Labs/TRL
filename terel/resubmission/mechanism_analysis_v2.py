@@ -126,7 +126,7 @@ def render_latex(analysis):
             r"\begin{table}[H]",
             r"\centering",
             r"\small",
-            r"\caption{Validation-only mechanism audit under the canonical protocol (three paired seeds). Each intervention changes one factor. $\Delta$ is the accuracy difference from full \TeReL{} in percentage points.}",
+            r"\caption{One-factor mechanism interventions on the validation split across three paired seeds. $\Delta$ is the accuracy difference from full \TeReL{} in percentage points.}",
             r"\label{tab:mechanism-audit}",
             r"\begin{tabular}{lrrrr}",
             r"\toprule",
