@@ -1,4 +1,5 @@
 import numpy as np
+from scipy import stats
 
 
 def summarize_values(values, *, bootstrap_samples: int = 10_000, seed: int = 260803):
@@ -11,6 +12,9 @@ def summarize_values(values, *, bootstrap_samples: int = 10_000, seed: int = 260
     resample_indices = rng.integers(0, len(values), size=(bootstrap_samples, len(values)))
     bootstrap_means = values[resample_indices].mean(axis=1)
     low, high = np.quantile(bootstrap_means, [0.025, 0.975])
+    degrees_of_freedom = len(values) - 1
+    standard_error = values.std(ddof=1) / np.sqrt(len(values))
+    t_margin = stats.t.ppf(0.975, degrees_of_freedom) * standard_error
     return {
         "raw": values.tolist(),
         "mean": float(values.mean()),
@@ -19,6 +23,9 @@ def summarize_values(values, *, bootstrap_samples: int = 10_000, seed: int = 260
         "ci95_high": float(high),
         "bootstrap_samples": int(bootstrap_samples),
         "bootstrap_seed": int(seed),
+        "student_t_degrees_of_freedom": int(degrees_of_freedom),
+        "student_t_ci95_low": float(values.mean() - t_margin),
+        "student_t_ci95_high": float(values.mean() + t_margin),
     }
 
 

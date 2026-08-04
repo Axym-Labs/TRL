@@ -58,6 +58,7 @@ class EncoderExperimentConfig:
     incsfa_whitening_dim: int | None = None
     incsfa_output_dim: int | None = None
     incsfa_learning_rate: float = 0.001
+    audit_lateral_proxy: bool = False
 
 
 @dataclass(frozen=True)
@@ -139,6 +140,7 @@ def _operation_proxy(
         "terel_local",
         "terel_batch",
         "terel_direct",
+        "terel_direct_batch",
         "terel_shift",
         "local_supcon",
         "bp",
@@ -182,6 +184,21 @@ def _operation_proxy(
         "linear_forward_backward_mac_proxy": None,
         "same_layer_pairwise_mac_proxy": None,
     }
+
+
+def resolve_terel_objective_mode(method: str) -> tuple[bool, str]:
+    """Resolve temporal detachment and decorrelation for a TeReL method id."""
+    modes = {
+        "terel_local": (True, "proxy"),
+        "terel_batch": (False, "proxy"),
+        "terel_direct": (True, "direct"),
+        "terel_direct_batch": (False, "direct"),
+        "terel_shift": (True, "shifted_proxy"),
+    }
+    try:
+        return modes[method]
+    except KeyError as error:
+        raise ValueError(f"Unknown TeReL method: {method}") from error
 
 
 @torch.no_grad()
@@ -252,7 +269,15 @@ def run_representation_experiment(
     probe_training = None
     optimizer = None
 
-    if method in {"random", "terel_local", "terel_batch", "terel_direct", "terel_shift", "local_supcon"}:
+    if method in {
+        "random",
+        "terel_local",
+        "terel_batch",
+        "terel_direct",
+        "terel_direct_batch",
+        "terel_shift",
+        "local_supcon",
+    }:
         model = LayerLocalEncoder(
             input_dim=input_dim,
             hidden_dims=encoder.hidden_dims,
@@ -282,13 +307,7 @@ def run_representation_experiment(
                     device=device,
                 )
             else:
-                detach_previous = method != "terel_batch"
-                covariance_mode = {
-                    "terel_local": "proxy",
-                    "terel_batch": "proxy",
-                    "terel_direct": "direct",
-                    "terel_shift": "shifted_proxy",
-                }[method]
+                detach_previous, covariance_mode = resolve_terel_objective_mode(method)
                 encoder_training = train_local_encoder(
                     model=model,
                     optimizer=optimizer,
@@ -310,6 +329,7 @@ def run_representation_experiment(
                     training_mode=encoder.training_mode,
                     augmentation=encoder.augmentation,
                     gradient_accumulation_steps=encoder.gradient_accumulation_steps,
+                    audit_lateral_proxy=encoder.audit_lateral_proxy,
                 )
         train_representations = extract_representations(
             model,

@@ -1,9 +1,15 @@
 import torch
+import pytest
 
+from terel.resubmission import training
 from terel.resubmission.data import TemporalTensorDataset
 from terel.resubmission.model import LayerLocalEncoder
 from terel.resubmission.objective import LossCoefficients
-from terel.resubmission.training import augment_mnist_batch, local_train_step, train_local_encoder
+from terel.resubmission.training import (
+    augment_mnist_batch,
+    local_train_step,
+    train_local_encoder,
+)
 
 
 def test_leaky_relu_keeps_a_gradient_path_for_negative_units():
@@ -103,6 +109,25 @@ def test_direct_covariance_control_updates_correlated_encoder():
     assert not torch.equal(before, model.layers[0].weight.detach())
 
 
+def test_lateral_proxy_diagnostics_identify_an_exact_direct_direction():
+    """Using the current covariance as the proxy must report exact alignment."""
+    assert hasattr(training, "lateral_proxy_diagnostics")
+    activations = torch.tensor([[1.0, 1.0], [-1.0, -1.0]])
+    mean = torch.zeros(2)
+    exact_offdiagonal_covariance = torch.tensor([[0.0, 1.0], [1.0, 0.0]])
+
+    diagnostics = training.lateral_proxy_diagnostics(
+        activations,
+        mean=mean,
+        lateral=exact_offdiagonal_covariance,
+    )
+
+    assert diagnostics["valid"] is True
+    assert diagnostics["cosine_alignment"] == pytest.approx(1.0)
+    assert diagnostics["relative_error"] == pytest.approx(0.0)
+    assert diagnostics["norm_ratio"] == pytest.approx(1.0)
+
+
 def test_shifted_proxy_uses_stored_previous_centered_activation():
     """The asynchronous path must be executable from stored state alone."""
     model = LayerLocalEncoder(
@@ -177,6 +202,46 @@ def test_training_loop_records_every_layer_update_and_exact_example_budget():
     assert all(delta > 0.0 for delta in summary.layer_lateral_delta_l2)
     assert summary.dynamic_state_numel == sum(state.dynamic_state_numel() for state in model.states)
     assert summary.seconds > 0.0
+
+
+def test_training_loop_records_lagged_proxy_alignment_only_when_requested():
+    """The review audit must summarize real minibatch proxy directions without changing training."""
+    torch.manual_seed(31)
+    dataset = TemporalTensorDataset(
+        features=torch.randn(12, 4),
+        labels=torch.arange(12) % 2,
+        boundaries=torch.tensor([True] + [False] * 11),
+    )
+    model = LayerLocalEncoder(
+        input_dim=4,
+        hidden_dims=(5, 3),
+        activation="identity",
+        statistics_momentum=0.9,
+        lateral_momentum=0.0,
+    )
+    optimizer = torch.optim.AdamW(model.encoder_parameters(), lr=1e-3)
+
+    summary = train_local_encoder(
+        model=model,
+        optimizer=optimizer,
+        dataset=dataset,
+        epochs=1,
+        batch_size=4,
+        order_mode="chronological",
+        order_seed=101,
+        chunk_size=2,
+        coefficients=LossCoefficients(),
+        variance_target=1.0,
+        detach_previous=False,
+        covariance_mode="proxy",
+        device=torch.device("cpu"),
+        audit_lateral_proxy=True,
+    )
+
+    assert summary.lateral_proxy_audited_batches == (2, 2)
+    assert all(-1.0 <= value <= 1.0 for value in summary.lateral_proxy_cosine_mean)
+    assert all(value >= 0.0 for value in summary.lateral_proxy_relative_error_mean)
+    assert all(value >= 0.0 for value in summary.lateral_proxy_norm_ratio_mean)
 
 
 def test_batch_normalization_parameters_are_registered_and_trainable():

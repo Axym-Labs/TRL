@@ -67,6 +67,44 @@ class EncoderTrainingSummary:
     epochs_per_layer: int = 0
     optimizer_steps: int = 0
     gradient_accumulation_steps: int = 1
+    lateral_proxy_cosine_mean: tuple[float, ...] = ()
+    lateral_proxy_relative_error_mean: tuple[float, ...] = ()
+    lateral_proxy_norm_ratio_mean: tuple[float, ...] = ()
+    lateral_proxy_audited_batches: tuple[int, ...] = ()
+
+
+@torch.no_grad()
+def lateral_proxy_diagnostics(
+    z: torch.Tensor,
+    *,
+    mean: torch.Tensor,
+    lateral: torch.Tensor,
+    epsilon: float = 1e-12,
+) -> dict[str, float | bool]:
+    """Compare the lagged lateral direction with the same-batch direction."""
+    centered = z.detach() - mean.detach()
+    current = centered.T @ centered / len(centered)
+    current.fill_diagonal_(0.0)
+    proxy_direction = centered @ lateral.detach().T
+    direct_direction = centered @ current.T
+    proxy_norm = torch.linalg.vector_norm(proxy_direction)
+    direct_norm = torch.linalg.vector_norm(direct_direction)
+    valid = bool(proxy_norm > epsilon and direct_norm > epsilon)
+    if not valid:
+        return {
+            "valid": False,
+            "cosine_alignment": 0.0,
+            "relative_error": 0.0,
+            "norm_ratio": 0.0,
+        }
+    cosine = torch.sum(proxy_direction * direct_direction) / (proxy_norm * direct_norm)
+    relative_error = torch.linalg.vector_norm(proxy_direction - direct_direction) / direct_norm
+    return {
+        "valid": True,
+        "cosine_alignment": float(cosine.clamp(-1.0, 1.0)),
+        "relative_error": float(relative_error),
+        "norm_ratio": float(proxy_norm / direct_norm),
+    }
 
 
 def _layer_snapshots(model: LayerLocalEncoder):
@@ -111,6 +149,7 @@ def train_local_encoder(
     training_mode: str = "joint",
     augmentation: str = "none",
     gradient_accumulation_steps: int = 1,
+    audit_lateral_proxy: bool = False,
 ) -> EncoderTrainingSummary:
     """Train a TeReL encoder and return the fidelity/compute audit record."""
     if epochs <= 0:
@@ -130,6 +169,9 @@ def train_local_encoder(
     examples = 0
     loss_sum = 0.0
     optimizer_steps = 0
+    proxy_cosines = [[] for _ in model.layers]
+    proxy_relative_errors = [[] for _ in model.layers]
+    proxy_norm_ratios = [[] for _ in model.layers]
     batches_per_epoch = math.ceil(len(dataset) / batch_size)
     stages = range(len(model.layers)) if training_mode == "greedy" else (None,)
     for active_layer in stages:
@@ -166,7 +208,20 @@ def train_local_encoder(
                     zero_grad=batch_index == group_start,
                     optimizer_step=take_step,
                     loss_scale=1.0 / group_size,
+                    audit_lateral_proxy=audit_lateral_proxy,
                 )
+                for layer_index in range(len(model.layers)):
+                    prefix = f"layer_{layer_index}/lateral_proxy_"
+                    if metrics.get(prefix + "valid", 0.0) > 0.5:
+                        proxy_cosines[layer_index].append(
+                            metrics[prefix + "cosine_alignment"]
+                        )
+                        proxy_relative_errors[layer_index].append(
+                            metrics[prefix + "relative_error"]
+                        )
+                        proxy_norm_ratios[layer_index].append(
+                            metrics[prefix + "norm_ratio"]
+                        )
                 steps += 1
                 examples += len(features)
                 loss_sum += metrics["loss"]
@@ -191,6 +246,17 @@ def train_local_encoder(
         epochs_per_layer=int(epochs),
         optimizer_steps=int(optimizer_steps),
         gradient_accumulation_steps=int(gradient_accumulation_steps),
+        lateral_proxy_cosine_mean=tuple(
+            sum(values) / len(values) if values else 0.0 for values in proxy_cosines
+        ),
+        lateral_proxy_relative_error_mean=tuple(
+            sum(values) / len(values) if values else 0.0
+            for values in proxy_relative_errors
+        ),
+        lateral_proxy_norm_ratio_mean=tuple(
+            sum(values) / len(values) if values else 0.0 for values in proxy_norm_ratios
+        ),
+        lateral_proxy_audited_batches=tuple(len(values) for values in proxy_cosines),
     )
 
 
@@ -208,6 +274,7 @@ def local_train_step(
     zero_grad: bool = True,
     optimizer_step: bool = True,
     loss_scale: float = 1.0,
+    audit_lateral_proxy: bool = False,
 ) -> dict[str, float]:
     """Apply one optimizer step using independent per-layer TeReL losses."""
     model.train()
@@ -263,6 +330,22 @@ def local_train_step(
             detach_previous=detach_previous,
             lateral_reference=lateral_reference,
         )
+        if audit_lateral_proxy and covariance_mode == "proxy":
+            diagnostics = lateral_proxy_diagnostics(
+                z,
+                mean=state.mean,
+                lateral=state.lateral,
+            )
+            metrics.update(
+                {
+                    "lateral_proxy_valid": float(diagnostics["valid"]),
+                    "lateral_proxy_cosine_alignment": diagnostics[
+                        "cosine_alignment"
+                    ],
+                    "lateral_proxy_relative_error": diagnostics["relative_error"],
+                    "lateral_proxy_norm_ratio": diagnostics["norm_ratio"],
+                }
+            )
         if covariance_mode == "direct":
             covariance_loss = direct_offdiagonal_covariance_loss(z, mean=state.mean)
             loss = loss + coefficients.covariance * covariance_loss

@@ -1,5 +1,6 @@
 import torch
 
+from terel.resubmission import experiments
 from terel.resubmission.data import DatasetSplits, TemporalTensorDataset
 from terel.resubmission.experiments import (
     EncoderExperimentConfig,
@@ -213,6 +214,17 @@ def test_greedy_training_budget_is_recorded_as_epochs_per_layer():
     proxy = result["resource_accounting"]["operation_proxy"]
     assert proxy["linear_forward_backward_mac_proxy"] == 672
     assert proxy["same_layer_pairwise_mac_proxy"] == 480
+
+
+def test_undetached_direct_control_keeps_the_canonical_temporal_gradient():
+    """The matched direct control must not silently detach the preceding activation."""
+    assert hasattr(experiments, "resolve_terel_objective_mode")
+    detach_previous, covariance_mode = experiments.resolve_terel_objective_mode(
+        "terel_direct_batch"
+    )
+
+    assert detach_previous is False
+    assert covariance_mode == "direct"
 
 
 def test_held_out_split_cannot_run_without_gate_context():

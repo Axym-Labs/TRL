@@ -13,6 +13,14 @@ def test_seed_summary_reports_sample_sd_and_reproducible_percentile_interval():
     assert summary["ci95_low"] < summary["mean"] < summary["ci95_high"]
 
 
+def test_seed_summary_reports_a_small_sample_student_t_interval():
+    summary = summarize_values([1.0, 2.0, 3.0, 4.0, 5.0])
+
+    assert summary["student_t_degrees_of_freedom"] == 4
+    assert np.isclose(summary["student_t_ci95_low"], 1.0367568385)
+    assert np.isclose(summary["student_t_ci95_high"], 4.9632431615)
+
+
 def test_paired_contrast_matches_by_seed_instead_of_result_order():
     treatment = {1001: 0.80, 1002: 0.75, 1003: 0.90, 1004: 0.85, 1005: 0.70}
     control = {1005: 0.60, 1003: 0.75, 1001: 0.70, 1004: 0.80, 1002: 0.70}
