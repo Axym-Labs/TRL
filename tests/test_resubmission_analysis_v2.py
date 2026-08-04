@@ -50,6 +50,7 @@ def test_v2_analysis_reports_frozen_methods_and_paired_gaps(tmp_path):
     assert "Random, no normalization (all layers)" in rendered
     assert r"\TeReL{} $-$ random, no normalization" in rendered
     assert r"\label{tab:mnist-primary}" in rendered
+    assert rendered.count(r"\begin{table}[H]") == 2
     assert "Corrected MNIST" not in rendered
 
 

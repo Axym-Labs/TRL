@@ -86,7 +86,7 @@ def render_normalization_control_latex(analysis):
     normalization = analysis["random_bn_minus_random_no_norm"]
     return "\n".join(
         [
-            r"\begin{table}[t]",
+            r"\begin{table}[H]",
             r"\centering",
             r"\small",
             r"\caption{Normalization-matched random-control audit on MNIST test accuracy (\%, five paired seeds). The BatchNorm-calibrated encoder keeps all weights and affine normalization parameters at initialization; only train-split running statistics are updated. Values are mean $\pm$ sample SD, and contrasts use 95\% Student-$t$ intervals.}",

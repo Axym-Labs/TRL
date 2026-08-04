@@ -138,6 +138,7 @@ def test_review_patch_analysis_compares_frozen_local_supcon_and_renders_tables(
         0.03
     )
     main_tex = review_patch_analysis.render_confirmatory_latex(analysis)
+    assert r"\begin{table}[H]" in main_tex
     assert "Local SupCon" in main_tex
     assert "Student-$t$" in main_tex
     monkeypatch.setattr(

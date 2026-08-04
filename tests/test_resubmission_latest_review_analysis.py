@@ -56,6 +56,7 @@ def test_latest_review_analysis_reports_matched_random_control_and_paired_effect
     assert analysis["random_bn_minus_random_no_norm"]["mean_difference"] == pytest.approx(0.04)
     assert analysis["decision"] == "supported"
     rendered = render_normalization_control_latex(analysis)
+    assert r"\begin{table}[H]" in rendered
     assert "BatchNorm-calibrated random" in rendered
     assert "3.00" in rendered
 

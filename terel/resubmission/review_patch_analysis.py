@@ -228,7 +228,7 @@ def render_confirmatory_latex(analysis):
     contrast = analysis["terel_minus_local_supcon"]
     return "\n".join(
         [
-            r"\begin{table}[t]",
+            r"\begin{table}[H]",
             r"\centering",
             r"\caption{Matched label-aware comparison on MNIST test accuracy (\%, five seeds). Local SupCon receives all same-label positives in each minibatch; both methods have layer-local credit, the same architecture, 60 data presentations, and the same all-layer probe.}",
             r"\label{tab:local-supcon-comparison}",

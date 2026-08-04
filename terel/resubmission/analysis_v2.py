@@ -233,7 +233,7 @@ def render_main_latex(analysis):
         )
     return "\n".join(
         [
-            r"\begin{table}[t]",
+            r"\begin{table}[H]",
             r"\centering",
             r"\caption{MNIST test accuracy (\%, five seeds). All-layer readout access is matched across methods; TeReL last-layer access is a secondary audit. Values are mean $\pm$ sample SD.}",
             r"\label{tab:mnist-primary}",
@@ -246,7 +246,7 @@ def render_main_latex(analysis):
             r"\end{tabular}",
             r"\end{table}",
             "",
-            r"\begin{table}[t]",
+            r"\begin{table}[H]",
             r"\centering",
             r"\caption{Paired test-set accuracy differences in percentage points with 95\% Student-$t$ intervals over the five seed-paired differences.}",
             r"\label{tab:mnist-contrasts}",
