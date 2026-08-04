@@ -70,6 +70,19 @@ def test_review_patch_analysis_selects_validation_winner_and_summarizes_controls
         "mean_difference"
     ] == pytest.approx(-0.01)
 
+    ledger = review_patch_analysis.build_review_patch_validation_ledger(
+        tmp_path,
+        analysis,
+        local_candidates=("candidate-a", "candidate-b"),
+        validation_seeds=(1, 2, 3),
+        lagged_id="lagged",
+        direct_id="direct",
+    )
+    assert ledger["selection_complete"] is True
+    assert ledger["selected_primary"] == "candidate-b"
+    assert ledger["records"]["candidate-b"]["values"] == [0.94, 0.95, 0.96]
+    assert len(ledger["records"]["candidate-b"]["sha256"]) == 3
+
 
 def test_review_patch_analysis_refuses_an_incomplete_candidate(tmp_path):
     review_patch_analysis = _analysis_module()

@@ -1,6 +1,7 @@
 """Analyze the frozen validation evidence requested by the post-revision review."""
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
@@ -122,15 +123,58 @@ def analyze_validation_patch(
     }
 
 
+def build_review_patch_validation_ledger(
+    results_root,
+    analysis,
+    *,
+    local_candidates=LOCAL_SUPCON_CANDIDATES,
+    validation_seeds=(101, 202, 303),
+    lagged_id="lagged-proxy-audit",
+    direct_id="direct-covariance-matched",
+):
+    """Build the hash-linked ledger used to freeze the selected test run."""
+    seeds = tuple(int(seed) for seed in validation_seeds)
+    identifiers = tuple(local_candidates) + (direct_id, lagged_id)
+    records = {}
+    for identifier in identifiers:
+        loaded = _load_records(results_root, identifier, seeds)
+        paths = [Path(results_root) / identifier / f"seed-{seed}.json" for seed in seeds]
+        summary = _accuracy_summary(loaded)
+        records[identifier] = {
+            "values": summary["raw"],
+            "mean": summary["mean"],
+            "sample_sd": summary["sample_sd"],
+            "sha256": [
+                hashlib.sha256(path.read_bytes()).hexdigest() for path in paths
+            ],
+        }
+    return {
+        "schema_version": 3,
+        "selection_complete": True,
+        "selection_split": "mnist_validation",
+        "selection_seeds": list(seeds),
+        "primary_metric": "accuracy",
+        "selected_primary": analysis["selected_local_supcon"],
+        "selection_rule": analysis["selection_rule"],
+        "records": records,
+    }
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--validation-results", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--ledger-output")
     arguments = parser.parse_args(argv)
     analysis = analyze_validation_patch(arguments.validation_results)
     output = Path(arguments.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(analysis, indent=2, sort_keys=True) + "\n")
+    if arguments.ledger_output:
+        ledger = build_review_patch_validation_ledger(
+            arguments.validation_results, analysis
+        )
+        ledger_output = Path(arguments.ledger_output)
+        ledger_output.parent.mkdir(parents=True, exist_ok=True)
+        ledger_output.write_text(json.dumps(ledger, indent=2, sort_keys=True) + "\n")
 
 
 if __name__ == "__main__":

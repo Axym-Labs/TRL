@@ -55,15 +55,32 @@ def _resource_summary(records):
         )
         operation_values.append(sum(value or 0 for value in components))
     first = resources[0]
+    first_record = records[0]
+    encoder = first_record.get("encoder_config", {})
+    hidden_dims = [int(width) for width in encoder.get("hidden_dims", [])]
+    normalization_buffer_bytes = 0
+    if encoder.get("normalization") == "batch_norm":
+        # Running mean/variance are float32; num_batches_tracked is int64.
+        normalization_buffer_bytes = 2 * sum(hidden_dims) * 4 + len(hidden_dims) * 8
+    parameter_bytes = int(first.get("parameter_bytes", 0))
+    supervised_head_bytes = 0
+    if first_record.get("method") == "bp" or first_record.get("run_id") == "bp-all":
+        confusion_matrix = first_record.get("metrics", {}).get("confusion_matrix", [])
+        num_classes = len(confusion_matrix) or 10
+        if hidden_dims:
+            supervised_head_bytes = (hidden_dims[-1] * num_classes + num_classes) * 4
     return {
         "encoder_examples": mean_field("examples"),
         "encoder_steps": mean_field("steps"),
         "optimizer_steps": mean_field("optimizer_steps", mean_field("steps")),
         "encoder_seconds": mean_field("seconds"),
         "peak_device_memory_bytes": mean_field("peak_device_memory_bytes"),
-        "parameter_bytes": int(first.get("parameter_bytes", 0)),
+        "parameter_bytes": parameter_bytes,
         "dynamic_state_bytes": int(first.get("dynamic_state_bytes", 0)),
         "optimizer_state_bytes": int(first.get("optimizer_state_bytes", 0)),
+        "inference_encoder_bytes": (
+            parameter_bytes - supervised_head_bytes + normalization_buffer_bytes
+        ),
         "operation_proxy": sum(operation_values) / len(operation_values),
     }
 
@@ -207,7 +224,8 @@ def render_main_latex(analysis):
         summary = analysis["contrasts"][name]
         contrast_rows.append(
             f'{label} & {summary["mean_difference"] * 100:.2f} '
-            f'[{summary["ci95_low"] * 100:.2f}, {summary["ci95_high"] * 100:.2f}] \\\\'
+            f'[{summary["student_t_ci95_low"] * 100:.2f}, '
+            f'{summary["student_t_ci95_high"] * 100:.2f}] \\\\'
         )
     return "\n".join(
         [
@@ -226,7 +244,7 @@ def render_main_latex(analysis):
             "",
             r"\begin{table}[t]",
             r"\centering",
-            r"\caption{Paired test-set accuracy differences in percentage points with percentile 95\% bootstrap intervals over seeds.}",
+            r"\caption{Paired test-set accuracy differences in percentage points with 95\% Student-$t$ intervals over the five seed-paired differences.}",
             r"\label{tab:corrected-contrasts}",
             r"\begin{tabular}{lc}",
             r"\toprule",
@@ -244,6 +262,7 @@ def render_main_latex(analysis):
 def render_appendix_latex(analysis, streaming=None):
     raw_rows = []
     resource_rows = []
+    state_rows = []
     for method in METHOD_ORDER:
         summary = analysis["methods"][method]
         raw = ", ".join(f"{value * 100:.2f}" for value in summary["raw"])
@@ -256,6 +275,12 @@ def render_appendix_latex(analysis, streaming=None):
             f'{resource["optimizer_steps"]:.0f} & {resource["encoder_seconds"]:.1f} & '
             f'{resource["peak_device_memory_bytes"] / 2**20:.1f} & '
             f'{resource["operation_proxy"] / 1e9:.1f} \\\\'
+        )
+        state_rows.append(
+            f'{METHOD_LABELS[method]} & {resource["parameter_bytes"] / 2**20:.3f} & '
+            f'{resource["optimizer_state_bytes"] / 2**20:.3f} & '
+            f'{resource["dynamic_state_bytes"] / 2**20:.3f} & '
+            f'{resource["inference_encoder_bytes"] / 2**20:.3f} \\\\'
         )
     streaming_block = ""
     if streaming is not None:
@@ -305,6 +330,20 @@ def render_appendix_latex(analysis, streaming=None):
             r"Method & Examples (M) & Opt. steps & Seconds & Peak MiB & MAC (G) \\",
             r"\midrule",
             *resource_rows,
+            r"\bottomrule",
+            r"\end{tabular}",
+            r"\end{table}",
+            "",
+            r"\begin{table}[H]",
+            r"\centering",
+            r"\small",
+            r"\caption{Training-state decomposition in MiB. Model parameters are those fitted during encoder training (the BP entry therefore includes its supervised head); optimizer and dynamic state are training-only. Inference encoder state retains hidden-layer parameters and normalization buffers but discards the BP head and all TeReL lateral/statistics state.}",
+            r"\label{tab:training-state-decomposition}",
+            r"\begin{tabular}{lrrrr}",
+            r"\toprule",
+            r"Method & Model params & Optimizer & Dynamic & Inference encoder \\",
+            r"\midrule",
+            *state_rows,
             r"\bottomrule",
             r"\end{tabular}",
             r"\end{table}",

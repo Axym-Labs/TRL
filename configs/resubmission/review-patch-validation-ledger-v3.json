@@ -1,0 +1,127 @@
+{
+  "primary_metric": "accuracy",
+  "records": {
+    "direct-covariance-matched": {
+      "mean": 0.9693333333333333,
+      "sample_sd": 0.0006806859285553922,
+      "sha256": [
+        "2fac14cd29c01404308efccb074b89f776e1bd9ac747fa94f2f7f8f957d8eed7",
+        "692a3f86a6aa3479b501d9e32bcafe8ba495566accb450fddef768c49833f6ba",
+        "b5180f44127c28a65dea1b6b67f408b6477625f35968b5fb4163d799f7021dcc"
+      ],
+      "values": [
+        0.9691,
+        0.9701,
+        0.9688
+      ]
+    },
+    "lagged-proxy-audit": {
+      "mean": 0.9718666666666667,
+      "sample_sd": 0.0009237604307034277,
+      "sha256": [
+        "75c2b5a5d4978266564927b91f34ccab4771bf757582eb5cbc6a8a44e0105814",
+        "f92a260015e9a4393810e0ba6a61b8eb674047dfecef2f389ed37625a5a69f4f",
+        "5f4e5008379306eaba4909b964d59741aacb3771fa560865a9944eb5b7a3b17f"
+      ],
+      "values": [
+        0.9724,
+        0.9724,
+        0.9708
+      ]
+    },
+    "local-supcon-lr1e3-t01": {
+      "mean": 0.9689666666666668,
+      "sample_sd": 0.00030550504633041625,
+      "sha256": [
+        "cf1b5c9fa0cae2af5b99a1ea7ef576516f2efb2e41b5fe605962ec8e58e1b553",
+        "75cd34e88f341f277860847d3fc831f89fdc962b196360fb99057e43c235db8b",
+        "18fd8800df696ed1c87d348678ebf1d9059a6b234a22609a19d3088c57f2a57d"
+      ],
+      "values": [
+        0.9693,
+        0.9687,
+        0.9689
+      ]
+    },
+    "local-supcon-lr1e3-t02": {
+      "mean": 0.9620000000000001,
+      "sample_sd": 0.00017320508075693275,
+      "sha256": [
+        "479a0fc48c8daf6fb0d56d204d8de99129d1f7ef2e505412830b2126c5d7e706",
+        "3426e89ce6d077828d5bdaeee4affeab041f6e077235c160a5ad8bfcfade80c3",
+        "461bd21c8620db451108583a059704012d6a9830cc2ca7420f100d86a11dc383"
+      ],
+      "values": [
+        0.9622,
+        0.9619,
+        0.9619
+      ]
+    },
+    "local-supcon-lr1e4-t01": {
+      "mean": 0.9649000000000001,
+      "sample_sd": 0.0015394804318340652,
+      "sha256": [
+        "87ebb516206d0a350b0ca41bd38c0836f8089a41c5c438d2ce1cc864108b9987",
+        "d6748d34999ab58430e880b0f7dc524f0db6db82a60128877dde51353160d89e",
+        "8431392f2d55be7e9befd5ff67a2ae8cd45f4f0e589a51687683f1e81966fd9f"
+      ],
+      "values": [
+        0.9666,
+        0.9636,
+        0.9645
+      ]
+    },
+    "local-supcon-lr1e4-t02": {
+      "mean": 0.9560333333333334,
+      "sample_sd": 0.001222020185321544,
+      "sha256": [
+        "c77293b2343892c0f821e0e014a2480ee9d8679b87fae30b6ae7b93eb926f4f0",
+        "12e61acc137c98d7508471af70ec950574a644f7151a86b7bf3df38099fe5a19",
+        "0e8dfe6c606edcbada886e1df1abd9c48a6738f3f728b35766dea9f430a167ba"
+      ],
+      "values": [
+        0.9571,
+        0.9547,
+        0.9563
+      ]
+    },
+    "local-supcon-lr3e4-t01": {
+      "mean": 0.9663,
+      "sample_sd": 0.00034641016151380137,
+      "sha256": [
+        "c10e89453d7a203d6922da2366324a131eb46701bac987e15a671e7d94f4350c",
+        "2d68284a34c6256b04599b0423cd11b187cc38cf2d32641db4e3bbb960b832de",
+        "f9c775448ad4cafd24610691bd0e5f6814e9a3fa45da0edec6ddf6673b83b61c"
+      ],
+      "values": [
+        0.9665,
+        0.9665,
+        0.9659
+      ]
+    },
+    "local-supcon-lr3e4-t02": {
+      "mean": 0.9598,
+      "sample_sd": 0.0010583005244258245,
+      "sha256": [
+        "0fbda2f8a682e7b21533212ce4eef7319a7bb31f56683b393ae7c129c76e2347",
+        "85aeceb24d1bb0e96eead1b98eea53438683b4ed177d83051b7b12599e298e2b",
+        "56bcf4857f692437073ae6d97b77d9411c062b98de76d14a59f85f897e64506e"
+      ],
+      "values": [
+        0.961,
+        0.959,
+        0.9594
+      ]
+    }
+  },
+  "schema_version": 3,
+  "selected_primary": "local-supcon-lr1e3-t01",
+  "selection_complete": true,
+  "selection_rule": "highest mean validation accuracy; then lower sample SD, lower learning rate, and higher temperature",
+  "selection_seeds": [
+    101,
+    202,
+    303
+  ],
+  "selection_split": "mnist_validation"
+}

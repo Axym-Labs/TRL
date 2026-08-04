@@ -1,0 +1,47 @@
+schema_version: 3
+evaluation_split: test
+seeds: [1101, 1202, 1303, 1404, 1505]
+selection_seeds: [101, 202, 303]
+selection_policy: >-
+  This one-row matrix freezes the Local SupCon candidate selected by the
+  predeclared validation rule. It adds a matched label-aware comparator without
+  changing or rerunning the v2 headline matrix.
+
+probe:
+  epochs: 60
+  batch_size: 2048
+  optimizer: adamw
+  learning_rate: 0.003
+  weight_decay: 0.0001
+  readout: all
+
+datasets:
+  mnist:
+    data_root: ../../data/mnist
+    num_classes: 10
+    runs:
+      - id: local-supcon-all
+        encoder:
+          method: local_supcon
+          hidden_dims: [512, 256]
+          activation: leaky_relu
+          normalization: batch_norm
+          normalization_momentum: 0.9
+          training_mode: joint
+          augmentation: none
+          gradient_accumulation_steps: 1
+          epochs: 60
+          batch_size: 256
+          order_mode: class_chunks
+          chunk_size: 16
+          optimizer: adamw
+          learning_rate: 0.001
+          weight_decay: 0.0001
+          similarity_coefficient: 1.0
+          variance_coefficient: 2.5
+          covariance_coefficient: 1.0
+          variance_target: 1.0
+          statistics_momentum: 0.9
+          lateral_momentum: 0.0
+          contrastive_temperature: 0.1
+          audit_lateral_proxy: false
