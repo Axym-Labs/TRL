@@ -1,8 +1,8 @@
 # Anonymous TeReL supplement
 
 This supplement contains the implementation, frozen plans, validation ledgers,
-raw per-seed records, analysis outputs, and fidelity tests used by the revised
-paper. Dataset files are not redistributed.
+raw per-seed records, analysis outputs, manuscript source, and fidelity tests
+used by the revised paper. Dataset files are not redistributed.
 
 ## Setup
 
@@ -48,5 +48,10 @@ uv run python -m terel.resubmission.analysis_v2 \
 
 uv run python -m terel.resubmission.review_patch_analysis \
   --validation-results artifacts/review-patch-validation-v3 \
-  --output /tmp/review-patch-analysis-v3.json
+  --output /tmp/review-patch-analysis-v3.json \
+  --confirmatory-results artifacts/review-patch-confirmatory-results-v3 \
+  --reference-results artifacts/confirmatory-results-v2 \
+  --confirmatory-output /tmp/review-patch-confirmatory-analysis-v3.json \
+  --results-tex /tmp/generated-review-patch-v3.tex \
+  --appendix-tex /tmp/generated-review-patch-appendix-v3.tex
 ```

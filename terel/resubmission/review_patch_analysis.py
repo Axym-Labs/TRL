@@ -158,11 +158,161 @@ def build_review_patch_validation_ledger(
         "selection_rule": analysis["selection_rule"],
         "records": records,
     }
+
+
+def _load_confirmatory_records(root, run_id, seeds):
+    records = []
+    for seed in seeds:
+        path = Path(root) / "mnist" / run_id / f"seed-{seed}.json"
+        if not path.exists():
+            raise ValueError(f"missing confirmatory record: {path}")
+        record = json.loads(path.read_text())
+        if (record.get("dataset"), record.get("run_id"), int(record.get("seed", -1))) != (
+            "mnist",
+            run_id,
+            int(seed),
+        ):
+            raise ValueError(f"mismatched confirmatory record: {path}")
+        records.append(record)
+    return records
+
+
+def analyze_confirmatory_comparator(
+    comparator_root,
+    reference_root,
+    *,
+    seeds=(1101, 1202, 1303, 1404, 1505),
+    comparator_id="local-supcon-all",
+    reference_id="terel-all",
+):
+    seeds = tuple(int(seed) for seed in seeds)
+    local_records = _load_confirmatory_records(comparator_root, comparator_id, seeds)
+    terel_records = _load_confirmatory_records(reference_root, reference_id, seeds)
+    local_by_seed = {
+        int(record["seed"]): float(record["metrics"]["accuracy"])
+        for record in local_records
+    }
+    terel_by_seed = {
+        int(record["seed"]): float(record["metrics"]["accuracy"])
+        for record in terel_records
+    }
+    first_resource = local_records[0].get("resource_accounting", {})
+    hidden_dims = local_records[0].get("encoder_config", {}).get("hidden_dims", [])
+    normalization_bytes = 2 * sum(int(width) for width in hidden_dims) * 4 + len(hidden_dims) * 8
+    return {
+        "schema_version": 3,
+        "seeds": list(seeds),
+        "local_supcon": {
+            **summarize_values(list(local_by_seed.values())),
+            "mean_encoder_seconds": float(
+                np.mean(
+                    [record["encoder_training"]["seconds"] for record in local_records]
+                )
+            ),
+            "parameter_bytes": int(first_resource.get("parameter_bytes", 0)),
+            "optimizer_state_bytes": int(
+                first_resource.get("optimizer_state_bytes", 0)
+            ),
+            "normalization_buffer_bytes": normalization_bytes,
+            "inference_encoder_bytes": int(first_resource.get("parameter_bytes", 0))
+            + normalization_bytes,
+        },
+        "terel": summarize_values(list(terel_by_seed.values())),
+        "terel_minus_local_supcon": paired_contrast(terel_by_seed, local_by_seed),
+    }
+
+
+def render_confirmatory_latex(analysis):
+    local = analysis["local_supcon"]
+    terel = analysis["terel"]
+    contrast = analysis["terel_minus_local_supcon"]
+    return "\n".join(
+        [
+            r"\begin{table}[t]",
+            r"\centering",
+            r"\caption{Matched label-aware comparison on MNIST test accuracy (\%, five seeds). Local SupCon receives all same-label positives in each minibatch; both methods have layer-local credit, the same architecture, 60 data presentations, and the same all-layer probe.}",
+            r"\label{tab:local-supcon-comparison}",
+            r"\begin{tabular}{lc}",
+            r"\toprule",
+            r"Method & Accuracy \\",
+            r"\midrule",
+            f'\\TeReL{{}} & {terel["mean"] * 100:.2f} $\\pm$ {terel["sample_sd"] * 100:.2f} \\\\',
+            f'Local SupCon & {local["mean"] * 100:.2f} $\\pm$ {local["sample_sd"] * 100:.2f} \\\\',
+            r"\midrule",
+            f'\\TeReL{{}} $-$ Local SupCon & {contrast["mean_difference"] * 100:.2f} '
+            f'[{contrast["student_t_ci95_low"] * 100:.2f}, '
+            f'{contrast["student_t_ci95_high"] * 100:.2f}] \\\\',
+            r"\bottomrule",
+            r"\end{tabular}",
+            r"\par\smallskip\footnotesize The bracketed contrast is a paired 95\% Student-$t$ interval.",
+            r"\end{table}",
+            "",
+        ]
+    )
+
+
+def render_validation_appendix_latex(validation, confirmatory):
+    candidate_rows = []
+    for candidate in LOCAL_SUPCON_CANDIDATES:
+        summary = validation["local_supcon_candidates"][candidate]
+        config = summary["encoder_config"]
+        label = (
+            f'{float(config["learning_rate"]):.0e} & '
+            f'{float(config["contrastive_temperature"]):.1f}'
+        )
+        value = f'{summary["mean"] * 100:.2f} $\\pm$ {summary["sample_sd"] * 100:.2f}'
+        if candidate == validation["selected_local_supcon"]:
+            value = r"\textbf{" + value + "}"
+        candidate_rows.append(f"{label} & {value} " + r"\\")
+    local = confirmatory["local_supcon"]
+    raw = ", ".join(f"{value * 100:.2f}" for value in local["raw"])
+    return "\n".join(
+        [
+            r"\begin{table}[H]",
+            r"\centering",
+            r"\small",
+            r"\caption{Complete validation selection for Local SupCon (accuracy \%, three seeds). Bold marks the predeclared winner.}",
+            r"\label{tab:local-supcon-validation}",
+            r"\begin{tabular}{rrc}",
+            r"\toprule",
+            r"Learning rate & Temperature & Accuracy \\",
+            r"\midrule",
+            *candidate_rows,
+            r"\bottomrule",
+            r"\end{tabular}",
+            r"\end{table}",
+            "",
+            r"\begin{table}[H]",
+            r"\centering",
+            r"\small",
+            r"\caption{Local SupCon confirmatory raw values and resource state. Inference retains encoder parameters and batch-normalization buffers; optimizer state is training-only.}",
+            r"\label{tab:local-supcon-raw}",
+            r"\begin{tabular}{lc}",
+            r"\toprule",
+            r"Quantity & Value \\",
+            r"\midrule",
+            f"Test accuracy by seed (\\%) & {raw} " + r"\\",
+            f'Mean encoder seconds & {local["mean_encoder_seconds"]:.1f} \\\\',
+            f'Model parameters (MiB) & {local["parameter_bytes"] / 2**20:.3f} \\\\',
+            f'Optimizer state (MiB) & {local["optimizer_state_bytes"] / 2**20:.3f} \\\\',
+            f'Normalization buffers (MiB) & {local["normalization_buffer_bytes"] / 2**20:.3f} \\\\',
+            f'Inference encoder (MiB) & {local["inference_encoder_bytes"] / 2**20:.3f} \\\\',
+            r"\bottomrule",
+            r"\end{tabular}",
+            r"\end{table}",
+            "",
+        ]
+    )
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--validation-results", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--ledger-output")
+    parser.add_argument("--confirmatory-results")
+    parser.add_argument("--reference-results")
+    parser.add_argument("--confirmatory-output")
+    parser.add_argument("--results-tex")
+    parser.add_argument("--appendix-tex")
     arguments = parser.parse_args(argv)
     analysis = analyze_validation_patch(arguments.validation_results)
     output = Path(arguments.output)
@@ -175,6 +325,26 @@ def main(argv=None):
         ledger_output = Path(arguments.ledger_output)
         ledger_output.parent.mkdir(parents=True, exist_ok=True)
         ledger_output.write_text(json.dumps(ledger, indent=2, sort_keys=True) + "\n")
+    confirmatory_arguments = (
+        arguments.confirmatory_results,
+        arguments.reference_results,
+        arguments.confirmatory_output,
+        arguments.results_tex,
+        arguments.appendix_tex,
+    )
+    if any(confirmatory_arguments):
+        if not all(confirmatory_arguments):
+            parser.error("all confirmatory reporting arguments must be supplied together")
+        confirmatory = analyze_confirmatory_comparator(
+            arguments.confirmatory_results, arguments.reference_results
+        )
+        Path(arguments.confirmatory_output).write_text(
+            json.dumps(confirmatory, indent=2, sort_keys=True) + "\n"
+        )
+        Path(arguments.results_tex).write_text(render_confirmatory_latex(confirmatory))
+        Path(arguments.appendix_tex).write_text(
+            render_validation_appendix_latex(analysis, confirmatory)
+        )
 
 
 if __name__ == "__main__":

@@ -35,6 +35,7 @@ DEFAULT_ARTIFACT_PATHS = (
     "mechanism-audit-results-v2",
     "recovery-results-v2",
     "review-patch-analysis-v3.json",
+    "review-patch-confirmatory-analysis-v3.json",
     "review-patch-confirmatory-manifest-v3.json",
     "review-patch-confirmatory-results-v3",
     "review-patch-validation-v3",
@@ -97,11 +98,19 @@ def _write_zip_member(archive, name, payload):
 
 
 def build_supplement_archive(
-    *, repository, artifact_root, output_path, artifact_paths=DEFAULT_ARTIFACT_PATHS
+    *,
+    repository,
+    artifact_root,
+    output_path,
+    artifact_paths=DEFAULT_ARTIFACT_PATHS,
+    paper_repository=None,
 ):
     repository = Path(repository).resolve()
     artifact_root = Path(artifact_root).resolve()
     output_path = Path(output_path).resolve()
+    paper_repository = (
+        Path(paper_repository).resolve() if paper_repository is not None else None
+    )
     workspace_root = repository.parents[1]
     replacements = {
         str(workspace_root / "data" / "mnist"): "data/mnist",
@@ -110,6 +119,8 @@ def build_supplement_archive(
         str(repository): ".",
         str(workspace_root): "<WORKSPACE>",
     }
+    if paper_repository is not None:
+        replacements[str(paper_repository)] = "paper"
     artifact_files, missing = _artifact_files(artifact_root, artifact_paths)
     payloads = []
     manifest_entries = []
@@ -130,6 +141,13 @@ def build_supplement_archive(
 
     for relative in _tracked_files(repository):
         add_file(repository / relative, Path("source") / relative, "tracked_source")
+    if paper_repository is not None:
+        for relative in _tracked_files(paper_repository):
+            add_file(
+                paper_repository / relative,
+                Path("paper") / relative,
+                "tracked_paper_source",
+            )
     for source in artifact_files:
         add_file(
             source,
@@ -166,11 +184,13 @@ def main(argv=None):
     parser.add_argument("--repository", required=True)
     parser.add_argument("--artifact-root", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--paper-repository")
     arguments = parser.parse_args(argv)
     manifest = build_supplement_archive(
         repository=arguments.repository,
         artifact_root=arguments.artifact_root,
         output_path=arguments.output,
+        paper_repository=arguments.paper_repository,
     )
     print(
         json.dumps(

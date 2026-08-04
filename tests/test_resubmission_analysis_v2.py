@@ -74,7 +74,9 @@ def test_v2_analysis_separates_training_state_from_inference_encoder_state(tmp_p
                             "dynamic_state_bytes": 64,
                             "operation_proxy": {},
                         },
-                        "encoder_training": {
+                        "encoder_training": None
+                        if method == "random-all"
+                        else {
                             "examples": 10,
                             "steps": 2,
                             "optimizer_steps": 2,
@@ -89,8 +91,11 @@ def test_v2_analysis_separates_training_state_from_inference_encoder_state(tmp_p
     analysis = analyze_v2_results(tmp_path, expected_seeds=(11, 22))
 
     terel = analysis["methods"]["terel-all"]["resources"]
+    random = analysis["methods"]["random-all"]["resources"]
     bp = analysis["methods"]["bp-all"]["resources"]
     assert terel["inference_encoder_bytes"] == 240  # parameters + BN buffers/counters
+    assert random["inference_encoder_bytes"] == 176
+    assert random["encoder_examples"] == 0
     assert bp["inference_encoder_bytes"] == 240  # excludes the 2-by-10 supervised head
     rendered = render_appendix_latex(analysis)
     assert "Training-state decomposition" in rendered

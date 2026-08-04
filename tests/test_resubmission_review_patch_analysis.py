@@ -37,6 +37,23 @@ def _write_record(root, candidate, seed, accuracy, *, alignment=None):
     )
 
 
+def _write_confirmatory_record(root, run_id, seed, accuracy):
+    path = root / "mnist" / run_id / f"seed-{seed}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "dataset": "mnist",
+                "run_id": run_id,
+                "seed": seed,
+                "metrics": {"accuracy": accuracy},
+                "resource_accounting": {"parameter_bytes": 100},
+                "encoder_training": {"seconds": 1.0},
+            }
+        )
+    )
+
+
 def test_review_patch_analysis_selects_validation_winner_and_summarizes_controls(
     tmp_path,
 ):
@@ -96,3 +113,30 @@ def test_review_patch_analysis_refuses_an_incomplete_candidate(tmp_path):
             lagged_id="lagged",
             direct_id="direct",
         )
+
+
+def test_review_patch_analysis_compares_frozen_local_supcon_and_renders_tables(
+    tmp_path,
+):
+    review_patch_analysis = _analysis_module()
+    comparator = tmp_path / "comparator"
+    reference = tmp_path / "reference"
+    for seed, local, terel in zip(
+        (1, 2, 3), (0.94, 0.95, 0.96), (0.97, 0.98, 0.99), strict=True
+    ):
+        _write_confirmatory_record(comparator, "local-supcon-all", seed, local)
+        _write_confirmatory_record(reference, "terel-all", seed, terel)
+
+    analysis = review_patch_analysis.analyze_confirmatory_comparator(
+        comparator,
+        reference,
+        seeds=(1, 2, 3),
+    )
+
+    assert analysis["local_supcon"]["mean"] == pytest.approx(0.95)
+    assert analysis["terel_minus_local_supcon"]["mean_difference"] == pytest.approx(
+        0.03
+    )
+    main_tex = review_patch_analysis.render_confirmatory_latex(analysis)
+    assert "Local SupCon" in main_tex
+    assert "Student-$t$" in main_tex

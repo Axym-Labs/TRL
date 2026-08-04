@@ -40,10 +40,9 @@ def _resource_summary(records):
     training = [record.get("encoder_training") for record in records]
     training = [record for record in training if record is not None]
     resources = [record.get("resource_accounting", {}) for record in records]
-    if not training:
-        return None
-
     def mean_field(name, default=0.0):
+        if not training:
+            return float(default)
         return sum(float(record.get(name, default)) for record in training) / len(training)
 
     operation_values = []
@@ -78,6 +77,11 @@ def _resource_summary(records):
         "parameter_bytes": parameter_bytes,
         "dynamic_state_bytes": int(first.get("dynamic_state_bytes", 0)),
         "optimizer_state_bytes": int(first.get("optimizer_state_bytes", 0)),
+        "normalization_buffer_bytes": normalization_buffer_bytes,
+        "algorithmic_dynamic_state_bytes": max(
+            int(first.get("dynamic_state_bytes", 0)) - normalization_buffer_bytes,
+            0,
+        ),
         "inference_encoder_bytes": (
             parameter_bytes - supervised_head_bytes + normalization_buffer_bytes
         ),
@@ -279,7 +283,8 @@ def render_appendix_latex(analysis, streaming=None):
         state_rows.append(
             f'{METHOD_LABELS[method]} & {resource["parameter_bytes"] / 2**20:.3f} & '
             f'{resource["optimizer_state_bytes"] / 2**20:.3f} & '
-            f'{resource["dynamic_state_bytes"] / 2**20:.3f} & '
+            f'{resource["algorithmic_dynamic_state_bytes"] / 2**20:.3f} & '
+            f'{resource["normalization_buffer_bytes"] / 2**20:.3f} & '
             f'{resource["inference_encoder_bytes"] / 2**20:.3f} \\\\'
         )
     streaming_block = ""
@@ -337,11 +342,11 @@ def render_appendix_latex(analysis, streaming=None):
             r"\begin{table}[H]",
             r"\centering",
             r"\small",
-            r"\caption{Training-state decomposition in MiB. Model parameters are those fitted during encoder training (the BP entry therefore includes its supervised head); optimizer and dynamic state are training-only. Inference encoder state retains hidden-layer parameters and normalization buffers but discards the BP head and all TeReL lateral/statistics state.}",
+            r"\caption{Training-state decomposition in MiB. Model parameters are those fitted during encoder training (the BP entry therefore includes its supervised head). Algorithm state is the TeReL lateral/statistics state after separating normalization buffers; optimizer and algorithm state are training-only. Inference encoder state retains hidden-layer parameters and normalization buffers but discards the BP head and TeReL state.}",
             r"\label{tab:training-state-decomposition}",
-            r"\begin{tabular}{lrrrr}",
+            r"\begin{tabular}{lrrrrr}",
             r"\toprule",
-            r"Method & Model params & Optimizer & Dynamic & Inference encoder \\",
+            r"Method & Model params & Optimizer & Algorithm & Norm. & Inference encoder \\",
             r"\midrule",
             *state_rows,
             r"\bottomrule",
