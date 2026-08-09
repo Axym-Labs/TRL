@@ -15,9 +15,10 @@ uv run --project source pytest -q source/tests
 ```
 
 Place MNIST under `data/mnist`, or change only the portable `data_root` field
-before reproducing a run. Executed records may contain path-only redactions.
+before reproducing a run. Executed records may contain path-only redactions;
+paper source also has identifying template names replaced.
 `redaction-manifest.json` gives the source and packaged SHA-256 values of every
-file; redaction changes no metric, configuration value, or random seed.
+file. Redaction changes no metric, configuration value, or random seed.
 
 ## Evidence map
 

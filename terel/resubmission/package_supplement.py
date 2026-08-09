@@ -263,8 +263,9 @@ def build_supplement_archive(
     manifest = {
         "schema_version": 1,
         "description": (
-            "Anonymized portable TeReL supplement. Path-only redactions are "
-            "identified by paired source and packaged SHA-256 values."
+            "Anonymized portable TeReL supplement. Path and paper-template "
+            "identifier redactions are identified by paired source and packaged "
+            "SHA-256 values."
         ),
         "missing_optional_artifact_paths": missing,
         "files": sorted(manifest_entries, key=lambda item: item["path"]),
