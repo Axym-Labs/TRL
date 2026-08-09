@@ -136,6 +136,8 @@ def test_supplement_archive_excludes_tracked_development_diary(tmp_path):
         "docs/canonical-online-protocol.md": "canonical protocol\n",
         "files/main.pdf": "old paper\n",
         "tests/test_legacy_regressions.py": "old regression\n",
+        "tests/test_resubmission_package_supplement.py": "release tooling test\n",
+        "terel/resubmission/package_supplement.py": "release tooling\n",
     }
     for relative, payload in tracked.items():
         path = repository / relative
@@ -162,6 +164,7 @@ def test_supplement_archive_excludes_tracked_development_diary(tmp_path):
     assert not any("discarded-config.yaml" in name for name in names)
     assert not any("files/main.pdf" in name for name in names)
     assert not any("test_legacy_regressions.py" in name for name in names)
+    assert not any("package_supplement.py" in name for name in names)
     assert not any("residual-state-validation.yaml" in name for name in names)
     assert "TeReL-supplement/source/configs/canonical-online-learning.yaml" in names
     assert (

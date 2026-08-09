@@ -64,6 +64,8 @@ SOURCE_EXCLUDED_FILES = {
     "all_comparison_runs.py",
     "all_comparison_runs_out.log",
     "tests/test_legacy_regressions.py",
+    "tests/test_resubmission_package_supplement.py",
+    "terel/resubmission/package_supplement.py",
     "terel/resubmission/latest_review_analysis.py",
     "terel/resubmission/review_patch_analysis.py",
     "tests/test_resubmission_latest_review_analysis.py",
