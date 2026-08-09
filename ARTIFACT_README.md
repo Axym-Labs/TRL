@@ -16,6 +16,23 @@ uv sync --extra test
 uv run pytest -q
 ```
 
+## Canonical samplewise TeReL evidence
+
+```text
+execution commit   44ddf2ac737ef19530b457a34fe0ccd0c5547017
+manifest           a697595d4f2a842e2f79db0bfe1dcf09ba251e4c003e97ef0095230471f75283
+configuration      5b080d918c4050506d80d416bcbd4441bce3d9f1f988e7eb9bedee03a1e5937c
+protocol source    fd7d698c6946289558ff85509e1098a24b078c3f351df468d21d82a989cd2476
+validation ledger  7ecd9eeb72d38d7c6952746e696c18c191f7293aa6ce7816dfdb07477797d8cb
+result records     eca357dd694a57be70477e6ccaab6f1cb4aaeadb0690a23afbc693c8594a2239
+```
+
+The record digest concatenates the five final files in lexical seed order. The
+frozen manifest contains the complete selected encoder and probe
+configuration, environment record, and predetermined final runs. The matched
+no-inhibition comparison is recorded in
+`configs/canonical-online-validation-ledger.json`; it is validation-only.
+
 ## Residual-state TeReL-S evidence
 
 ```text

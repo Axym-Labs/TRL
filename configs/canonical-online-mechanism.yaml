@@ -1,0 +1,41 @@
+protocol_version: canonical-online-mechanism-v1
+selection_split: validation
+data_root: /home/davwis/main/data/mnist
+maximum_candidates: 1
+encoder_base:
+  method: terel_residual
+  hidden_dims: [512, 256]
+  activation: leaky_relu
+  normalization: none
+  training_mode: joint
+  augmentation: none
+  gradient_accumulation_steps: 1
+  epochs: 2
+  batch_size: 1
+  order_mode: class_chunks
+  chunk_size: 16
+  optimizer: plain_sgd
+  learning_rate: 0.01
+  weight_decay: 0.0
+  similarity_coefficient: 1.0
+  variance_coefficient: 2.5
+  covariance_coefficient: 1.0
+  variance_target: 1.0
+  statistics_momentum: 0.99
+  lateral_momentum: 0.99
+  residual_lateral_rule: dual_inhibitory
+  residual_lateral_coefficient: 1000.0
+  residual_lateral_steps: 0
+  residual_lateral_step_size: 0.1
+  residual_lateral_include_diagonal: true
+  residual_lateral_moment_normalization: features
+probe_base:
+  epochs: 60
+  batch_size: 2048
+  optimizer: adamw
+  learning_rate: 0.003
+  weight_decay: 0.0001
+  readout: all
+candidates:
+  - id: no-inhibition
+    description: Exact-gradient boundary for the selected plain-SGD configuration.
