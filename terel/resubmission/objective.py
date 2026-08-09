@@ -177,8 +177,8 @@ def residual_lateral_dynamics(
 ) -> torch.Tensor:
     """Approximate inhibitory residual-state equilibrium with local dynamics."""
     _validate_residual_lateral_inputs(base_state, lateral, coefficient)
-    if steps <= 0:
-        raise ValueError("residual lateral dynamics steps must be positive")
+    if steps < 0:
+        raise ValueError("residual lateral dynamics steps must be nonnegative")
     if step_size <= 0.0:
         raise ValueError("residual lateral dynamics step size must be positive")
     values = base_state.detach()

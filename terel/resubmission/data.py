@@ -374,6 +374,22 @@ def encoder_batches(
         boundaries = torch.zeros(len(dataset), dtype=torch.bool)
         if len(dataset):
             boundaries[0] = True
+    elif order_mode == "within_stream_shuffled":
+        rng = np.random.default_rng(seed)
+        starts = np.flatnonzero(dataset.boundaries.detach().cpu().numpy())
+        if len(dataset) and (len(starts) == 0 or starts[0] != 0):
+            starts = np.concatenate(([0], starts))
+        stops = np.concatenate((starts[1:], [len(dataset)]))
+        segments = []
+        boundaries = torch.zeros(len(dataset), dtype=torch.bool)
+        offset = 0
+        for start, stop in zip(starts, stops, strict=True):
+            segment = np.arange(start, stop)
+            rng.shuffle(segment)
+            segments.append(segment)
+            boundaries[offset] = True
+            offset += len(segment)
+        order = np.concatenate(segments) if segments else np.empty(0, dtype=np.int64)
     elif order_mode == "class_chunks":
         order, boundary_array = class_chunk_order(
             dataset.labels.detach().cpu().numpy(),

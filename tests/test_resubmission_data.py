@@ -101,6 +101,29 @@ def test_chronological_encoder_batches_preserve_data_boundaries_without_labels()
     assert all(len(batch) == 2 for batch in batches)
 
 
+def test_within_stream_shuffle_preserves_boundaries_and_membership():
+    dataset = TemporalTensorDataset(
+        features=torch.arange(8, dtype=torch.float32)[:, None],
+        labels=torch.zeros(8, dtype=torch.long),
+        boundaries=torch.tensor([True, False, False, True, False, True, False, False]),
+    )
+
+    features, boundaries = next(
+        encoder_batches(
+            dataset,
+            batch_size=8,
+            order_mode="within_stream_shuffled",
+            seed=17,
+            chunk_size=2,
+        )
+    )
+
+    assert boundaries.tolist() == [True, False, False, True, False, True, False, False]
+    assert set(features[:3, 0].tolist()) == {0.0, 1.0, 2.0}
+    assert set(features[3:5, 0].tolist()) == {3.0, 4.0}
+    assert set(features[5:, 0].tolist()) == {5.0, 6.0, 7.0}
+
+
 def test_mnist_protocol_uses_only_official_training_rows_for_train_validation():
     """The official test split must never be recycled as validation data."""
     train_images = torch.arange(12 * 4, dtype=torch.uint8).reshape(12, 2, 2)

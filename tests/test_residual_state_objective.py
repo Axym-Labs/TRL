@@ -208,6 +208,21 @@ def test_local_residual_dynamics_converges_to_the_equilibrium_reference():
     assert torch.allclose(actual, expected, atol=1e-10, rtol=1e-10)
 
 
+def test_zero_residual_lateral_steps_is_the_uninhibited_boundary():
+    base = torch.tensor([[1.0, -2.0]], dtype=torch.float64)
+    lateral = torch.tensor([[2.0, 0.5], [0.5, 1.0]], dtype=torch.float64)
+
+    actual = objective.residual_lateral_dynamics(
+        base_state=base,
+        lateral=lateral,
+        coefficient=1000.0,
+        steps=0,
+        step_size=0.1,
+    )
+
+    assert torch.equal(actual, base)
+
+
 def test_residual_lateral_moment_uses_the_same_detached_neuron_states():
     """Updating from activations instead of residual states must change this moment."""
     moment_builder = getattr(objective, "residual_lateral_moment", None)

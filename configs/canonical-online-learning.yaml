@@ -4,7 +4,7 @@ evaluation_source: train-derived MNIST validation split
 seeds: [101]
 data_root: /home/davwis/main/data/mnist
 output_root: /home/davwis/main/workspace/terel-paper-internal/canonical-online-learning/artifacts/optimizer-screen
-maximum_candidates: 10
+maximum_candidates: 16
 
 encoder_base:
   method: terel_residual
@@ -86,3 +86,37 @@ candidates:
     description: No residual-inhibition settling; mechanism boundary control.
     encoder:
       residual_lateral_steps: 0
+  - id: plain-sgd-settling-1
+    description: Second-stage compatibility check for plain SGD and one lateral pass.
+    encoder:
+      optimizer: plain_sgd
+      learning_rate: 0.001
+      residual_lateral_steps: 1
+  - id: plain-sgd-1e-3-4ep
+    description: Second-stage check of whether two additional streaming passes close the offline gap.
+    encoder:
+      optimizer: plain_sgd
+      learning_rate: 0.001
+      epochs: 4
+  - id: plain-sgd-3e-2
+    description: One-step extension above the initially successful SGD bracket.
+    encoder:
+      optimizer: plain_sgd
+      learning_rate: 0.03
+  - id: plain-sgd-1e-1
+    description: Upper extension used only because the initial optimum reached its boundary.
+    encoder:
+      optimizer: plain_sgd
+      learning_rate: 0.1
+  - id: plain-sgd-1e-2-settling-1
+    description: Compatibility of the selected plain-SGD scale with one lateral pass.
+    encoder:
+      optimizer: plain_sgd
+      learning_rate: 0.01
+      residual_lateral_steps: 1
+  - id: plain-sgd-1e-2-4ep
+    description: Follow-up test of whether four local streaming passes further close the offline gap.
+    encoder:
+      optimizer: plain_sgd
+      learning_rate: 0.01
+      epochs: 4
