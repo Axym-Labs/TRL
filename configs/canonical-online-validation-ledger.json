@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "selection_complete": true,
+  "selection_split": "validation",
+  "selection_seeds": [101, 102, 103],
+  "selected_configuration_id": "terel-online",
+  "selection_statement": "Plain SGD at learning rate 0.01 reached the upper boundary of the initial rate bracket, so the bracket was extended once. Rates 0.03 and 0.1 failed the representation guard. One lateral pass matched four passes within 0.04 percentage points in mean validation accuracy and was selected for its simpler execution. No held-out alternative is permitted.",
+  "validation_accuracy": {
+    "terel_online": {
+      "values": [0.9604, 0.9583, 0.9586],
+      "mean": 0.9591,
+      "sample_sd": 0.0011357816691600547
+    },
+    "plain_sgd_four_pass": {
+      "values": [0.9603, 0.9588, 0.9593],
+      "mean": 0.9594666666666666,
+      "sample_sd": 0.0007637626158259982
+    },
+    "frozen_adamw_four_pass_reference": {
+      "values": [0.9550, 0.9554, 0.9550],
+      "mean": 0.9551333333333333,
+      "sample_sd": 0.00023094010767588897
+    }
+  },
+  "guard_outcomes": {
+    "plain_sgd_0.03": "failed representation eigenspectrum guard",
+    "plain_sgd_0.1": "failed representation eigenspectrum guard",
+    "adam_without_accumulated_second_moment": "failed representation eigenspectrum guard"
+  },
+  "selected_resource_accounting": {
+    "causal_dynamic_scalars": 2306,
+    "auxiliary_lateral_parameters": 655360,
+    "feedforward_parameters": 533248,
+    "optimizer_state_scalars": 0,
+    "observations_per_update": 1,
+    "lateral_matrix_vector_passes_per_observation": 1
+  }
+}

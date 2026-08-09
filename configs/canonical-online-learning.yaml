@@ -1,7 +1,7 @@
-protocol_version: canonical-online-learning-screen-v1
+protocol_version: canonical-online-terel-v1
 selection_split: validation
 evaluation_source: train-derived MNIST validation split
-seeds: [101]
+seeds: [101, 102, 103]
 data_root: /home/davwis/main/data/mnist
 output_root: /home/davwis/main/workspace/terel-paper-internal/canonical-online-learning/artifacts/optimizer-screen
 maximum_candidates: 16
@@ -108,8 +108,8 @@ candidates:
     encoder:
       optimizer: plain_sgd
       learning_rate: 0.1
-  - id: plain-sgd-1e-2-settling-1
-    description: Compatibility of the selected plain-SGD scale with one lateral pass.
+  - id: terel-online
+    description: Canonical samplewise TeReL with plain SGD and one lateral pass.
     encoder:
       optimizer: plain_sgd
       learning_rate: 0.01
