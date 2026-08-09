@@ -37,12 +37,12 @@ baselines, and frozen-protocol integrity.
 ## Canonical samplewise protocol
 
 Set `data_root` in `configs/canonical-online-learning.yaml`, then run a declared
-validation candidate with the recovery entrypoint. The selected configuration
+validation candidate. The selected configuration
 is `terel-online`; `configs/canonical-online-mechanism.yaml` defines its matched
 no-inhibition control.
 
 ```bash
-uv run python -m terel.resubmission.recovery \
+uv run python -m terel.resubmission.canonical_validation \
   --config configs/canonical-online-learning.yaml \
   --candidate terel-online \
   --seed 101 \

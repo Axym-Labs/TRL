@@ -1,9 +1,8 @@
 # Anonymous TeReL supplement
 
 This archive contains the final implementation, manuscript source, selected
-protocols, raw result records, analyses, and fidelity tests. It excludes
-datasets, discarded configurations, failed premise tests, partial ledgers, old
-figures, and the development chronology.
+protocols, raw result records, analyses, and fidelity tests needed to audit the
+reported claims.
 
 ## Setup
 

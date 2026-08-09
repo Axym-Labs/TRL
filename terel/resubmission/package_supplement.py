@@ -65,7 +65,15 @@ SOURCE_EXCLUDED_FILES = {
     "all_comparison_runs_out.log",
     "tests/test_legacy_regressions.py",
     "tests/test_resubmission_package_supplement.py",
+    "tests/test_resubmission_analysis_v2.py",
+    "tests/test_resubmission_confirmatory_v2.py",
+    "tests/test_resubmission_mechanism_analysis_v2.py",
+    "tests/test_resubmission_recovery.py",
+    "terel/resubmission/analysis_v2.py",
+    "terel/resubmission/confirmatory_v2.py",
+    "terel/resubmission/mechanism_analysis_v2.py",
     "terel/resubmission/package_supplement.py",
+    "terel/resubmission/recovery.py",
     "terel/resubmission/latest_review_analysis.py",
     "terel/resubmission/review_patch_analysis.py",
     "tests/test_resubmission_latest_review_analysis.py",
@@ -198,6 +206,12 @@ def build_supplement_archive(
     )
     workspace_root = repository.parents[1]
     replacements = {
+        "paper-internal/resubmission-1/artifacts/confirmatory-manifest-v2.json": (
+            "artifacts/batched-reference-manifest.json"
+        ),
+        "./configs/resubmission/confirmatory-matrix-v2.yaml": (
+            "artifacts/batched-reference-manifest.json"
+        ),
         "axym-publication": "paper-template",
         "Axym publication": "included publication",
         "Axym": "Paper",

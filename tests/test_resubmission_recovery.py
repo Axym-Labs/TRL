@@ -1,7 +1,10 @@
-from terel.resubmission.recovery import load_recovery_plan, resolve_candidate
+from terel.resubmission.canonical_validation import (
+    load_validation_plan,
+    resolve_candidate,
+)
 
 
-def test_recovery_plan_resolves_one_attributable_override(tmp_path):
+def test_validation_plan_resolves_one_attributable_override(tmp_path):
     path = tmp_path / "plan.yaml"
     path.write_text(
         """
@@ -19,7 +22,7 @@ candidates:
 """
     )
 
-    plan = load_recovery_plan(path)
+    plan = load_validation_plan(path)
     _, encoder, probe = resolve_candidate(plan, "all")
 
     assert encoder.hidden_dims == (4, 2)
