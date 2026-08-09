@@ -179,7 +179,14 @@ def _optimizer_bytes(optimizer):
 
 
 def _operation_proxy(
-    method, *, input_dim, hidden_dims, num_classes, batch_size, training
+    method,
+    *,
+    input_dim,
+    hidden_dims,
+    num_classes,
+    batch_size,
+    training,
+    residual_lateral_steps=1,
 ):
     """Coarse multiply-accumulate proxy; excludes optimizer and eigensolver work."""
     examples = int(training.get("examples", 0)) if isinstance(training, dict) else 0
@@ -218,7 +225,9 @@ def _operation_proxy(
             stage_examples = examples
             linear = 3 * examples * weights
         if method.startswith("terel_"):
-            dense_operations = 4 if method == "terel_residual" else 2
+            dense_operations = (
+                3 + residual_lateral_steps if method == "terel_residual" else 2
+            )
             pairwise = (
                 dense_operations
                 * stage_examples
@@ -641,6 +650,7 @@ def run_representation_experiment(
             num_classes=num_classes,
             batch_size=encoder.batch_size,
             training=serialized_training,
+            residual_lateral_steps=encoder.residual_lateral_steps,
         ),
     }
     return {
