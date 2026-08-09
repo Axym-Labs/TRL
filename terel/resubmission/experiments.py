@@ -49,6 +49,10 @@ class EncoderExperimentConfig:
     optimizer: str = "adamw"
     learning_rate: float = 3e-4
     weight_decay: float = 1e-4
+    optimizer_momentum: float = 0.9
+    optimizer_beta1: float = 0.9
+    optimizer_beta2: float = 0.999
+    optimizer_epsilon: float = 1e-8
     similarity_coefficient: float = 1.0
     variance_coefficient: float = 2.5
     covariance_coefficient: float = 1.0
@@ -100,14 +104,37 @@ def set_reproducible_seed(seed: int):
         torch.cuda.manual_seed_all(seed)
 
 
-def _optimizer(name, parameters, *, learning_rate, weight_decay):
+def _optimizer(
+    name,
+    parameters,
+    *,
+    learning_rate,
+    weight_decay,
+    momentum=0.9,
+    beta1=0.9,
+    beta2=0.999,
+    epsilon=1e-8,
+):
     if name == "adamw":
-        return torch.optim.AdamW(parameters, lr=learning_rate, weight_decay=weight_decay)
+        return torch.optim.AdamW(
+            parameters,
+            lr=learning_rate,
+            betas=(beta1, beta2),
+            eps=epsilon,
+            weight_decay=weight_decay,
+        )
+    if name == "plain_sgd":
+        return torch.optim.SGD(
+            parameters,
+            lr=learning_rate,
+            momentum=0.0,
+            weight_decay=weight_decay,
+        )
     if name == "sgd":
         return torch.optim.SGD(
             parameters,
             lr=learning_rate,
-            momentum=0.9,
+            momentum=momentum,
             weight_decay=weight_decay,
         )
     raise ValueError(f"Unknown optimizer: {name}")
@@ -309,6 +336,10 @@ def run_representation_experiment(
                 model.encoder_parameters(),
                 learning_rate=encoder.learning_rate,
                 weight_decay=encoder.weight_decay,
+                momentum=encoder.optimizer_momentum,
+                beta1=encoder.optimizer_beta1,
+                beta2=encoder.optimizer_beta2,
+                epsilon=encoder.optimizer_epsilon,
             )
             if method == "local_supcon":
                 encoder_training = train_local_supervised_contrastive(
@@ -408,6 +439,10 @@ def run_representation_experiment(
             model.parameters(),
             learning_rate=encoder.learning_rate,
             weight_decay=encoder.weight_decay,
+            momentum=encoder.optimizer_momentum,
+            beta1=encoder.optimizer_beta1,
+            beta2=encoder.optimizer_beta2,
+            epsilon=encoder.optimizer_epsilon,
         )
         encoder_training = train_supervised_mlp(
             model=model,

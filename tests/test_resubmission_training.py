@@ -141,7 +141,7 @@ def test_shifted_proxy_uses_stored_previous_centered_activation():
         model.layers[0].weight.copy_(torch.eye(2))
         model.layers[0].bias.zero_()
         model.states[0].lateral.copy_(torch.eye(2))
-        model.states[0].previous_centered.copy_(torch.tensor([3.0, 4.0]))
+        model.states[0].ensure_previous_centered().copy_(torch.tensor([3.0, 4.0]))
         model.states[0].has_previous.fill_(True)
     optimizer = torch.optim.SGD(model.encoder_parameters(), lr=0.05)
     before = model.layers[0].weight.detach().clone()

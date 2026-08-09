@@ -1,6 +1,29 @@
 import torch
 
 from terel.resubmission import objective
+from terel.resubmission.state import TeReLState
+
+
+def test_residual_state_separates_causal_scalars_from_auxiliary_parameters():
+    """Resource accounting must not call learned lateral matrices temporal state."""
+    width = 5
+    state = TeReLState(width, statistics_momentum=0.9, lateral_momentum=0.99)
+    state.ensure_residual_lateral()
+
+    assert state.previous_centered is None
+    assert state.causal_dynamic_state_numel() == 3 * width + 1
+    assert state.auxiliary_parameter_numel() == 2 * width * width
+
+
+def test_shifted_proxy_allocates_centered_predecessor_only_when_requested():
+    """The accepted zero-offset path must not pay for a shifted-proxy-only vector."""
+    state = TeReLState(3, statistics_momentum=0.9, lateral_momentum=0.99)
+
+    centered = state.ensure_previous_centered()
+    assert centered.shape == (3,)
+    state.update(torch.tensor([[1.0, 2.0, 3.0]]))
+    assert torch.allclose(state.previous_centered, torch.tensor([[1.0, 2.0, 3.0]])[0])
+    assert state.causal_dynamic_state_numel() == 4 * 3 + 1
 
 
 def test_regularized_target_residual_reproduces_detached_activation_gradient():
@@ -203,4 +226,3 @@ def test_residual_lateral_moment_uses_the_same_detached_neuron_states():
         atol=1e-12,
         rtol=1e-12,
     )
-

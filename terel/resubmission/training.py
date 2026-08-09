@@ -462,10 +462,11 @@ def local_train_step(
             centered = z - state.mean
             lateral_reference = torch.zeros_like(centered)
             if state.has_previous and not boundaries[0]:
-                lateral_reference[0] = state.previous_centered
+                lateral_reference[0] = state.ensure_previous_centered()
             if z.shape[0] > 1:
                 lateral_reference[1:] = centered[:-1].detach()
             lateral_reference[boundaries] = 0.0
+            state.ensure_previous_centered()
         loss, metrics = terel_loss(
             z=z,
             previous=previous,

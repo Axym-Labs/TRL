@@ -7,6 +7,38 @@ from terel.resubmission.experiments import (
     ProbeExperimentConfig,
     run_representation_experiment,
 )
+
+
+def test_plain_sgd_has_no_momentum_or_adaptive_state():
+    parameter = torch.nn.Parameter(torch.tensor([1.0]))
+    optimizer = experiments._optimizer(
+        "plain_sgd",
+        [parameter],
+        learning_rate=0.1,
+        weight_decay=0.0,
+    )
+
+    assert isinstance(optimizer, torch.optim.SGD)
+    assert optimizer.param_groups[0]["momentum"] == 0.0
+    parameter.grad = torch.tensor([2.0])
+    optimizer.step()
+    assert optimizer.state == {}
+
+
+def test_adam_component_ablation_accepts_explicit_betas():
+    parameter = torch.nn.Parameter(torch.tensor([1.0]))
+    optimizer = experiments._optimizer(
+        "adamw",
+        [parameter],
+        learning_rate=0.1,
+        weight_decay=0.0,
+        beta1=0.0,
+        beta2=0.99,
+        epsilon=1e-6,
+    )
+
+    assert optimizer.param_groups[0]["betas"] == (0.0, 0.99)
+    assert optimizer.param_groups[0]["eps"] == 1e-6
 from terel.resubmission.provenance import TestGateError
 
 

@@ -10,7 +10,8 @@ def test_streaming_state_update_does_not_retain_autograd_graph():
 
     state.update(z)
 
-    for tensor in (state.mean, state.variance, state.lateral, state.previous, state.previous_centered):
+    assert state.previous_centered is None
+    for tensor in (state.mean, state.variance, state.lateral, state.previous):
         assert tensor.requires_grad is False
         assert tensor.grad_fn is None
 
@@ -18,7 +19,7 @@ def test_streaming_state_update_does_not_retain_autograd_graph():
 def test_dynamic_state_size_is_constant_in_stream_length():
     """The state footprint may depend on width, never on samples already seen."""
     state = TeReLState(features=3, statistics_momentum=0.9, lateral_momentum=0.95)
-    expected_numel = 3 + 3 + 9 + 3 + 3 + 1
+    expected_numel = 3 + 3 + 9 + 3 + 1
 
     before = state.dynamic_state_numel()
     for _ in range(20):
@@ -27,4 +28,3 @@ def test_dynamic_state_size_is_constant_in_stream_length():
 
     assert before == expected_numel
     assert after == expected_numel
-

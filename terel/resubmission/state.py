@@ -23,17 +23,36 @@ class TeReLState(nn.Module):
         self.register_buffer("lateral", torch.zeros(features, features))
         self.register_buffer("residual_lateral", None)
         self.register_buffer("previous", torch.zeros(features))
-        self.register_buffer("previous_centered", torch.zeros(features))
+        self.register_buffer("previous_centered", None)
         self.register_buffer("has_previous", torch.tensor(False))
 
     def dynamic_state_numel(self) -> int:
         return sum(buffer.numel() for buffer in self.buffers())
+
+    def causal_dynamic_state_numel(self) -> int:
+        vectors = (self.mean, self.variance, self.previous)
+        total = sum(vector.numel() for vector in vectors) + self.has_previous.numel()
+        if self.previous_centered is not None:
+            total += self.previous_centered.numel()
+        return total
+
+    def auxiliary_parameter_numel(self) -> int:
+        total = self.lateral.numel()
+        if self.residual_lateral is not None:
+            total += self.residual_lateral.numel()
+        return total
 
     @torch.no_grad()
     def ensure_residual_lateral(self) -> torch.Tensor:
         if self.residual_lateral is None:
             self.residual_lateral = torch.zeros_like(self.lateral)
         return self.residual_lateral
+
+    @torch.no_grad()
+    def ensure_previous_centered(self) -> torch.Tensor:
+        if self.previous_centered is None:
+            self.previous_centered = torch.zeros_like(self.previous)
+        return self.previous_centered
 
     @torch.no_grad()
     def update_residual_lateral(
@@ -82,5 +101,6 @@ class TeReLState(nn.Module):
         self.variance.mul_(sm).add_(batch_variance, alpha=1.0 - sm)
         self.lateral.mul_(lm).add_(covariance, alpha=1.0 - lm)
         self.previous.copy_(values[-1])
-        self.previous_centered.copy_(centered[-1])
+        if self.previous_centered is not None:
+            self.previous_centered.copy_(centered[-1])
         self.has_previous.fill_(True)
