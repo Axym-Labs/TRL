@@ -201,6 +201,12 @@ def test_training_loop_records_every_layer_update_and_exact_example_budget():
     assert len(summary.layer_lateral_delta_l2) == 2
     assert all(delta > 0.0 for delta in summary.layer_lateral_delta_l2)
     assert summary.dynamic_state_numel == sum(state.dynamic_state_numel() for state in model.states)
+    assert summary.causal_dynamic_state_numel == sum(
+        state.causal_dynamic_state_numel() for state in model.states
+    )
+    assert summary.auxiliary_parameter_numel == sum(
+        state.auxiliary_parameter_numel() for state in model.states
+    )
     assert summary.seconds > 0.0
 
 

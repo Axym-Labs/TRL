@@ -65,6 +65,8 @@ class EncoderTrainingSummary:
     residual_lateral_delta_l2: tuple[float, ...]
     parameter_numel: int
     dynamic_state_numel: int
+    causal_dynamic_state_numel: int
+    auxiliary_parameter_numel: int
     peak_device_memory_bytes: int
     training_mode: str = "joint"
     epochs_per_layer: int = 0
@@ -296,6 +298,12 @@ def train_local_encoder(
         ),
         parameter_numel=sum(parameter.numel() for parameter in model.encoder_parameters()),
         dynamic_state_numel=sum(state.dynamic_state_numel() for state in model.states),
+        causal_dynamic_state_numel=sum(
+            state.causal_dynamic_state_numel() for state in model.states
+        ),
+        auxiliary_parameter_numel=sum(
+            state.auxiliary_parameter_numel() for state in model.states
+        ),
         peak_device_memory_bytes=int(peak_memory),
         training_mode=training_mode,
         epochs_per_layer=int(epochs),

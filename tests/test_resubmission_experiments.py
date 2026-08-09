@@ -273,6 +273,12 @@ def test_residual_state_experiment_runs_through_the_cpu_validation_path():
     )
 
     assert result["method"] == "terel_residual"
+    assert result["resource_accounting"]["causal_dynamic_state_bytes"] > 0
+    assert result["resource_accounting"]["auxiliary_parameter_bytes"] > 0
+    assert (
+        result["resource_accounting"]["causal_dynamic_state_bytes"]
+        < result["resource_accounting"]["auxiliary_parameter_bytes"]
+    )
     assert result["encoder_config"]["residual_lateral_steps"] == 2
     assert result["encoder_config"]["normalization_affine"] is False
     assert result["encoder_config"]["residual_lateral_rule"] == "dual_inhibitory"

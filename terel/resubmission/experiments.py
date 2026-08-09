@@ -152,6 +152,22 @@ def _buffer_bytes(model):
     return sum(_tensor_bytes(buffer) for buffer in model.buffers())
 
 
+def _terel_resource_bytes(model):
+    causal = 0
+    auxiliary = 0
+    for state in model.states:
+        causal += sum(
+            _tensor_bytes(value)
+            for value in (state.mean, state.variance, state.previous, state.has_previous)
+        )
+        if state.previous_centered is not None:
+            causal += _tensor_bytes(state.previous_centered)
+        auxiliary += _tensor_bytes(state.lateral)
+        if state.residual_lateral is not None:
+            auxiliary += _tensor_bytes(state.residual_lateral)
+    return causal, auxiliary
+
+
 def _optimizer_bytes(optimizer):
     total = 0
     for state in optimizer.state.values():
@@ -307,6 +323,8 @@ def run_representation_experiment(
     normalization_calibration = None
     probe_training = None
     optimizer = None
+    causal_dynamic_state_bytes = 0
+    auxiliary_parameter_bytes = 0
 
     if method in {
         "random",
@@ -425,6 +443,10 @@ def run_representation_experiment(
         with torch.no_grad():
             logits = linear_probe(evaluation_representations.to(device)).cpu()
         dynamic_state_bytes = _buffer_bytes(model) if method.startswith("terel_") else 0
+        if method.startswith("terel_"):
+            causal_dynamic_state_bytes, auxiliary_parameter_bytes = (
+                _terel_resource_bytes(model)
+            )
 
     elif method == "bp":
         model = SupervisedMLP(
@@ -585,6 +607,8 @@ def run_representation_experiment(
     resource_accounting = {
         "parameter_bytes": int(parameter_bytes),
         "dynamic_state_bytes": int(dynamic_state_bytes),
+        "causal_dynamic_state_bytes": int(causal_dynamic_state_bytes),
+        "auxiliary_parameter_bytes": int(auxiliary_parameter_bytes),
         "optimizer_state_bytes": int(_optimizer_bytes(optimizer)) if optimizer is not None else 0,
         "encoder_batch_size": int(encoder.batch_size),
         "probe_batch_size": int(probe.batch_size),
