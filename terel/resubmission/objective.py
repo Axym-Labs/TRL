@@ -73,6 +73,136 @@ def temporal_references(
     return previous, valid
 
 
+def regularized_target_residual(
+    *,
+    z: torch.Tensor,
+    previous: torch.Tensor,
+    mean: torch.Tensor,
+    variance: torch.Tensor,
+    lateral: torch.Tensor,
+    pair_valid: torch.Tensor,
+    coefficients: LossCoefficients,
+    variance_target: float,
+    lateral_reference: torch.Tensor | None = None,
+):
+    """Construct the detached target whose residual gives the TeReL-S gradient."""
+    if coefficients.similarity <= 0.0:
+        raise ValueError("regularized target construction requires positive similarity")
+    if z.ndim != 2:
+        raise ValueError(f"Expected z with shape [batch, features], got {tuple(z.shape)}")
+    if previous.shape != z.shape:
+        raise ValueError(
+            f"Expected previous with shape {tuple(z.shape)}, got {tuple(previous.shape)}"
+        )
+    if pair_valid.shape != (z.shape[0],):
+        raise ValueError(
+            f"Expected pair_valid with shape {(z.shape[0],)}, got {tuple(pair_valid.shape)}"
+        )
+
+    values = z.detach()
+    previous = previous.detach()
+    mean = mean.detach()
+    variance = variance.detach()
+    lateral = lateral.detach()
+    centered = values - mean
+    if lateral_reference is None:
+        lateral_reference = centered
+    if lateral_reference.shape != values.shape:
+        raise ValueError(
+            f"Expected lateral_reference with shape {tuple(values.shape)}, "
+            f"got {tuple(lateral_reference.shape)}"
+        )
+
+    pair_count = int(pair_valid.sum())
+    pair_weight = torch.zeros(
+        z.shape[0], device=z.device, dtype=z.dtype
+    )
+    if pair_count:
+        pair_weight[pair_valid] = z.shape[0] / pair_count
+    variance_gate = F.relu(
+        torch.as_tensor(variance_target, device=z.device, dtype=z.dtype) - variance
+    )
+    residual = (
+        pair_weight[:, None] * (values - previous)
+        - (coefficients.variance / coefficients.similarity)
+        * variance_gate
+        * centered
+        + (coefficients.covariance / (2.0 * coefficients.similarity))
+        * F.linear(lateral_reference.detach(), lateral)
+    ).detach()
+    target = (values - residual).detach()
+    return target, residual
+
+
+def _validate_residual_lateral_inputs(
+    base_state: torch.Tensor,
+    lateral: torch.Tensor,
+    coefficient: float,
+) -> None:
+    if base_state.ndim != 2:
+        raise ValueError(
+            f"Expected base_state with shape [batch, features], got {tuple(base_state.shape)}"
+        )
+    features = base_state.shape[1]
+    if lateral.shape != (features, features):
+        raise ValueError(
+            f"Expected lateral with shape {(features, features)}, got {tuple(lateral.shape)}"
+        )
+    if coefficient < 0.0:
+        raise ValueError("residual lateral coefficient must be nonnegative")
+
+
+def residual_lateral_equilibrium(
+    *,
+    base_state: torch.Tensor,
+    lateral: torch.Tensor,
+    coefficient: float,
+) -> torch.Tensor:
+    """Solve the inhibitory residual-state dynamics exactly as a reference."""
+    _validate_residual_lateral_inputs(base_state, lateral, coefficient)
+    values = base_state.detach()
+    operator = torch.eye(
+        values.shape[1], device=values.device, dtype=values.dtype
+    ) + coefficient * lateral.detach()
+    return torch.linalg.solve(operator, values.T).T.detach()
+
+
+def residual_lateral_dynamics(
+    *,
+    base_state: torch.Tensor,
+    lateral: torch.Tensor,
+    coefficient: float,
+    steps: int,
+    step_size: float,
+) -> torch.Tensor:
+    """Approximate inhibitory residual-state equilibrium with local dynamics."""
+    _validate_residual_lateral_inputs(base_state, lateral, coefficient)
+    if steps <= 0:
+        raise ValueError("residual lateral dynamics steps must be positive")
+    if step_size <= 0.0:
+        raise ValueError("residual lateral dynamics step size must be positive")
+    values = base_state.detach()
+    lateral = lateral.detach()
+    state = values.clone()
+    for _ in range(steps):
+        inhibition = F.linear(state, lateral)
+        state = state + step_size * (values - state - coefficient * inhibition)
+    return state.detach()
+
+
+def residual_lateral_moment(neuron_state: torch.Tensor) -> torch.Tensor:
+    """Return the detached second moment used by residual-state lateral synapses."""
+    if neuron_state.ndim != 2:
+        raise ValueError(
+            "Expected neuron_state with shape [batch, features], "
+            f"got {tuple(neuron_state.shape)}"
+        )
+    if neuron_state.shape[0] == 0:
+        raise ValueError("Cannot form a lateral moment from an empty batch")
+    values = neuron_state.detach()
+    return (values.T @ values / values.shape[0]).detach()
+
+
 def terel_loss(
     *,
     z: torch.Tensor,

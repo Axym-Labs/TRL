@@ -10,14 +10,26 @@ from .state import TeReLState
 class StreamingNorm(nn.Module):
     """Per-feature normalization using bounded detached streaming moments."""
 
-    def __init__(self, features: int, *, momentum: float, epsilon: float = 1e-5):
+    def __init__(
+        self,
+        features: int,
+        *,
+        momentum: float,
+        epsilon: float = 1e-5,
+        affine: bool = True,
+    ):
         super().__init__()
         if not 0.0 <= momentum < 1.0:
             raise ValueError("normalization momentum must lie in [0, 1)")
         self.momentum = float(momentum)
         self.epsilon = float(epsilon)
-        self.weight = nn.Parameter(torch.ones(features))
-        self.bias = nn.Parameter(torch.zeros(features))
+        self.affine = bool(affine)
+        if self.affine:
+            self.weight = nn.Parameter(torch.ones(features))
+            self.bias = nn.Parameter(torch.zeros(features))
+        else:
+            self.register_buffer("weight", torch.ones(features))
+            self.register_buffer("bias", torch.zeros(features))
         self.register_buffer("running_mean", torch.zeros(features))
         self.register_buffer("running_variance", torch.ones(features))
 
@@ -51,6 +63,7 @@ class LayerLocalEncoder(nn.Module):
         lateral_momentum: float,
         normalization: str = "none",
         normalization_momentum: float = 0.9,
+        normalization_affine: bool = True,
     ):
         super().__init__()
         if not hidden_dims:
@@ -71,7 +84,11 @@ class LayerLocalEncoder(nn.Module):
             self.normalizations = nn.ModuleList(nn.LayerNorm(width) for width in hidden_dims)
         elif normalization == "streaming_norm":
             self.normalizations = nn.ModuleList(
-                StreamingNorm(width, momentum=normalization_momentum)
+                StreamingNorm(
+                    width,
+                    momentum=normalization_momentum,
+                    affine=normalization_affine,
+                )
                 for width in hidden_dims
             )
         else:
@@ -95,13 +112,24 @@ class LayerLocalEncoder(nn.Module):
     def forward_local(
         self, x: torch.Tensor, *, stop_after: int | None = None
     ) -> list[torch.Tensor]:
+        return [
+            activation
+            for _, _, activation in self.forward_local_details(x, stop_after=stop_after)
+        ]
+
+    def forward_local_details(
+        self, x: torch.Tensor, *, stop_after: int | None = None
+    ) -> list[tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
+        """Return preactivation, normalized value, and output for each local layer."""
         activations = []
         current = x
         for index, (layer, normalization) in enumerate(
             zip(self.layers, self.normalizations, strict=True)
         ):
-            current = self.activation(normalization(layer(current)))
-            activations.append(current)
+            preactivation = layer(current)
+            normalized = normalization(preactivation)
+            current = self.activation(normalized)
+            activations.append((preactivation, normalized, current))
             if stop_after is not None and index == stop_after:
                 break
             current = current.detach()

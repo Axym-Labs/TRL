@@ -209,6 +209,55 @@ def test_corrected_terel_experiment_records_all_layer_updates():
     assert "temporal_slowness" in result["representation_diagnostics"]
 
 
+def test_residual_state_experiment_runs_through_the_cpu_validation_path():
+    """Omitting the new mode from configuration or dispatch must break this run."""
+    result = run_representation_experiment(
+        splits=_toy_splits(),
+        dataset_name="toy",
+        num_classes=2,
+        seed=101,
+        encoder=EncoderExperimentConfig(
+            method="terel_residual",
+            hidden_dims=(4, 2),
+            activation="identity",
+            normalization="streaming_norm",
+            normalization_affine=False,
+            epochs=1,
+            batch_size=1,
+            order_mode="chronological",
+            optimizer="sgd",
+            learning_rate=0.01,
+            weight_decay=0.0,
+            statistics_momentum=0.9,
+            lateral_momentum=0.9,
+            residual_lateral_steps=2,
+            residual_lateral_step_size=0.1,
+            residual_lateral_rule="dual_inhibitory",
+            residual_lateral_coefficient=2.0,
+        ),
+        probe=_probe_config(),
+        evaluation_split="validation",
+        device=torch.device("cpu"),
+    )
+
+    assert result["method"] == "terel_residual"
+    assert result["encoder_config"]["residual_lateral_steps"] == 2
+    assert result["encoder_config"]["normalization_affine"] is False
+    assert result["encoder_config"]["residual_lateral_rule"] == "dual_inhibitory"
+    assert all(delta > 0.0 for delta in result["encoder_training"]["layer_parameter_delta_l2"])
+    assert all(delta > 0.0 for delta in result["encoder_training"]["layer_lateral_delta_l2"])
+    assert all(
+        delta > 0.0
+        for delta in result["encoder_training"]["residual_lateral_delta_l2"]
+    )
+    assert all(value > 0.0 for value in result["encoder_training"]["residual_state_rms_mean"])
+    assert all(
+        value >= 0.0
+        for value in result["encoder_training"]["residual_dynamics_delta_rms_mean"]
+    )
+    assert result["resource_accounting"]["encoder_batch_size"] == 1
+
+
 def test_greedy_training_budget_is_recorded_as_epochs_per_layer():
     result = run_representation_experiment(
         splits=_toy_splits(),

@@ -38,6 +38,7 @@ class EncoderExperimentConfig:
     activation: str = "leaky_relu"
     normalization: str = "none"
     normalization_momentum: float = 0.9
+    normalization_affine: bool = True
     training_mode: str = "joint"
     augmentation: str = "none"
     gradient_accumulation_steps: int = 1
@@ -61,6 +62,12 @@ class EncoderExperimentConfig:
     incsfa_learning_rate: float = 0.001
     audit_lateral_proxy: bool = False
     batch_norm_calibration_passes: int = 0
+    residual_lateral_steps: int = 1
+    residual_lateral_step_size: float = 0.1
+    residual_lateral_rule: str = "dual_inhibitory"
+    residual_lateral_include_diagonal: bool = True
+    residual_lateral_moment_normalization: str = "none"
+    residual_lateral_coefficient: float = 0.5
 
 
 @dataclass(frozen=True)
@@ -144,6 +151,7 @@ def _operation_proxy(
         "terel_direct",
         "terel_direct_batch",
         "terel_shift",
+        "terel_residual",
         "local_supcon",
         "bp",
     }:
@@ -196,6 +204,7 @@ def resolve_terel_objective_mode(method: str) -> tuple[bool, str]:
         "terel_direct": (True, "direct"),
         "terel_direct_batch": (False, "direct"),
         "terel_shift": (True, "shifted_proxy"),
+        "terel_residual": (True, "residual_state"),
     }
     try:
         return modes[method]
@@ -279,6 +288,7 @@ def run_representation_experiment(
         "terel_direct",
         "terel_direct_batch",
         "terel_shift",
+        "terel_residual",
         "local_supcon",
     }:
         model = LayerLocalEncoder(
@@ -287,6 +297,7 @@ def run_representation_experiment(
             activation=encoder.activation,
             normalization=encoder.normalization,
             normalization_momentum=encoder.normalization_momentum,
+            normalization_affine=encoder.normalization_affine,
             statistics_momentum=encoder.statistics_momentum,
             lateral_momentum=encoder.lateral_momentum,
         ).to(device)
@@ -335,6 +346,16 @@ def run_representation_experiment(
                     augmentation=encoder.augmentation,
                     gradient_accumulation_steps=encoder.gradient_accumulation_steps,
                     audit_lateral_proxy=encoder.audit_lateral_proxy,
+                    residual_lateral_steps=encoder.residual_lateral_steps,
+                    residual_lateral_step_size=encoder.residual_lateral_step_size,
+                    residual_lateral_rule=encoder.residual_lateral_rule,
+                    residual_lateral_include_diagonal=(
+                        encoder.residual_lateral_include_diagonal
+                    ),
+                    residual_lateral_moment_normalization=(
+                        encoder.residual_lateral_moment_normalization
+                    ),
+                    residual_lateral_coefficient=encoder.residual_lateral_coefficient,
                 )
         elif encoder.batch_norm_calibration_passes:
             normalization_calibration = calibrate_batch_normalization(

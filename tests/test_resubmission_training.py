@@ -345,3 +345,140 @@ def test_gradient_accumulation_releases_each_graph_and_counts_optimizer_steps():
     assert summary.optimizer_steps == 6
     assert summary.gradient_accumulation_steps == 4
     assert all(delta > 0.0 for delta in summary.layer_parameter_delta_l2)
+
+
+def test_dual_lateral_rule_preserves_representation_state_and_learns_from_residuals():
+    """Conflating representation and residual moments must break the two-state rule."""
+    model = LayerLocalEncoder(
+        input_dim=2,
+        hidden_dims=(2,),
+        activation="identity",
+        normalization="none",
+        statistics_momentum=0.9,
+        lateral_momentum=0.0,
+    )
+    with torch.no_grad():
+        model.layers[0].weight.copy_(torch.eye(2))
+        model.layers[0].bias.zero_()
+        model.states[0].previous.zero_()
+        model.states[0].has_previous.fill_(True)
+        model.states[0].lateral.copy_(torch.tensor([[0.0, 1.0], [1.0, 0.0]]))
+    initializer = getattr(model.states[0], "ensure_residual_lateral", None)
+    assert callable(initializer), "separate residual lateral state is not implemented"
+    residual_lateral = initializer()
+    with torch.no_grad():
+        residual_lateral.copy_(torch.ones(2, 2))
+    optimizer = torch.optim.SGD(model.encoder_parameters(), lr=0.1)
+
+    local_train_step(
+        model=model,
+        optimizer=optimizer,
+        x=torch.tensor([[1.0, 2.0]]),
+        boundaries=torch.tensor([False]),
+        coefficients=LossCoefficients(similarity=1.0, variance=0.0, covariance=2.0),
+        variance_target=1.0,
+        detach_previous=True,
+        covariance_mode="residual_state",
+        residual_lateral_rule="dual_inhibitory",
+        residual_lateral_coefficient=1.0,
+        residual_lateral_steps=80,
+        residual_lateral_step_size=0.2,
+        residual_lateral_include_diagonal=True,
+    )
+
+    assert torch.allclose(
+        model.layers[0].weight,
+        torch.tensor([[0.9, -0.2], [-0.1, 0.8]]),
+        atol=1e-6,
+        rtol=1e-6,
+    )
+    assert torch.allclose(
+        model.states[0].lateral,
+        torch.tensor([[0.0, 2.0], [2.0, 0.0]]),
+        atol=1e-6,
+        rtol=1e-6,
+    )
+    assert torch.allclose(
+        model.states[0].residual_lateral,
+        torch.ones(2, 2),
+        atol=1e-6,
+        rtol=1e-6,
+    )
+
+
+def test_zero_coupling_residual_state_matches_fixed_affine_streaming_norm_update():
+    """The residual target must retain the exact TeReL-S weight gradient."""
+    torch.manual_seed(53)
+    reference = LayerLocalEncoder(
+        input_dim=2,
+        hidden_dims=(2,),
+        activation="leaky_relu",
+        normalization="streaming_norm",
+        normalization_momentum=0.9,
+        normalization_affine=False,
+        statistics_momentum=0.9,
+        lateral_momentum=0.9,
+    )
+    residual = LayerLocalEncoder(
+        input_dim=2,
+        hidden_dims=(2,),
+        activation="leaky_relu",
+        normalization="streaming_norm",
+        normalization_momentum=0.9,
+        normalization_affine=False,
+        statistics_momentum=0.9,
+        lateral_momentum=0.9,
+    )
+    residual.load_state_dict(reference.state_dict())
+    with torch.no_grad():
+        for model in (reference, residual):
+            model.states[0].mean.copy_(torch.tensor([0.2, -0.3]))
+            model.states[0].variance.copy_(torch.tensor([0.4, 0.8]))
+            model.states[0].lateral.copy_(torch.tensor([[0.0, 0.3], [0.3, 0.0]]))
+            model.states[0].previous.copy_(torch.tensor([0.1, -0.2]))
+            model.states[0].has_previous.fill_(True)
+
+    x = torch.tensor([[0.4, -0.7]])
+    boundaries = torch.tensor([False])
+    coefficients = LossCoefficients(similarity=1.0, variance=2.5, covariance=1.0)
+    reference_optimizer = torch.optim.SGD(reference.encoder_parameters(), lr=0.03)
+    residual_optimizer = torch.optim.SGD(residual.encoder_parameters(), lr=0.03)
+
+    local_train_step(
+        model=reference,
+        optimizer=reference_optimizer,
+        x=x,
+        boundaries=boundaries,
+        coefficients=coefficients,
+        variance_target=1.0,
+        detach_previous=True,
+        covariance_mode="proxy",
+    )
+    local_train_step(
+        model=residual,
+        optimizer=residual_optimizer,
+        x=x,
+        boundaries=boundaries,
+        coefficients=coefficients,
+        variance_target=1.0,
+        detach_previous=True,
+        covariance_mode="residual_state",
+        residual_lateral_rule="dual_inhibitory",
+        residual_lateral_coefficient=0.0,
+        residual_lateral_steps=4,
+    )
+
+    assert tuple(reference.normalizations[0].parameters()) == ()
+    assert tuple(residual.normalizations[0].parameters()) == ()
+    assert torch.allclose(
+        residual.layers[0].weight,
+        reference.layers[0].weight,
+        atol=1e-7,
+        rtol=1e-6,
+    )
+    assert torch.allclose(
+        residual.layers[0].bias,
+        reference.layers[0].bias,
+        atol=1e-7,
+        rtol=1e-6,
+    )

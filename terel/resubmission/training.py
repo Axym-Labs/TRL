@@ -10,6 +10,8 @@ from .model import LayerLocalEncoder
 from .objective import (
     LossCoefficients,
     direct_offdiagonal_covariance_loss,
+    regularized_target_residual,
+    residual_lateral_dynamics,
     temporal_references,
     terel_loss,
 )
@@ -60,6 +62,7 @@ class EncoderTrainingSummary:
     mean_loss: float
     layer_parameter_delta_l2: tuple[float, ...]
     layer_lateral_delta_l2: tuple[float, ...]
+    residual_lateral_delta_l2: tuple[float, ...]
     parameter_numel: int
     dynamic_state_numel: int
     peak_device_memory_bytes: int
@@ -71,6 +74,9 @@ class EncoderTrainingSummary:
     lateral_proxy_relative_error_mean: tuple[float, ...] = ()
     lateral_proxy_norm_ratio_mean: tuple[float, ...] = ()
     lateral_proxy_audited_batches: tuple[int, ...] = ()
+    residual_state_rms_mean: tuple[float, ...] = ()
+    base_residual_state_rms_mean: tuple[float, ...] = ()
+    residual_dynamics_delta_rms_mean: tuple[float, ...] = ()
 
 
 @torch.no_grad()
@@ -150,6 +156,12 @@ def train_local_encoder(
     augmentation: str = "none",
     gradient_accumulation_steps: int = 1,
     audit_lateral_proxy: bool = False,
+    residual_lateral_steps: int = 1,
+    residual_lateral_step_size: float = 0.1,
+    residual_lateral_rule: str = "dual_inhibitory",
+    residual_lateral_include_diagonal: bool = True,
+    residual_lateral_moment_normalization: str = "none",
+    residual_lateral_coefficient: float = 0.5,
 ) -> EncoderTrainingSummary:
     """Train a TeReL encoder and return the fidelity/compute audit record."""
     if epochs <= 0:
@@ -161,6 +173,12 @@ def train_local_encoder(
     model.to(device)
     before = _layer_snapshots(model)
     lateral_before = [state.lateral.detach().cpu().clone() for state in model.states]
+    residual_lateral_before = [
+        None
+        if state.residual_lateral is None
+        else state.residual_lateral.detach().cpu().clone()
+        for state in model.states
+    ]
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
 
@@ -172,6 +190,9 @@ def train_local_encoder(
     proxy_cosines = [[] for _ in model.layers]
     proxy_relative_errors = [[] for _ in model.layers]
     proxy_norm_ratios = [[] for _ in model.layers]
+    residual_state_rms = [[] for _ in model.layers]
+    base_residual_state_rms = [[] for _ in model.layers]
+    residual_dynamics_delta_rms = [[] for _ in model.layers]
     batches_per_epoch = math.ceil(len(dataset) / batch_size)
     stages = range(len(model.layers)) if training_mode == "greedy" else (None,)
     for active_layer in stages:
@@ -185,12 +206,12 @@ def train_local_encoder(
                 chunk_size=chunk_size,
             )):
                 features = features.to(device, non_blocking=True)
+                boundaries = boundaries.to(device, non_blocking=True)
                 features = _augment(
                     features,
                     mode=augmentation,
                     seed=order_seed + stage_offset * 100_000 + epoch * 10_000 + steps,
                 )
-                boundaries = boundaries.to(device, non_blocking=True)
                 group_start = (batch_index // gradient_accumulation_steps) * gradient_accumulation_steps
                 group_stop = min(group_start + gradient_accumulation_steps, batches_per_epoch)
                 group_size = group_stop - group_start
@@ -209,6 +230,14 @@ def train_local_encoder(
                     optimizer_step=take_step,
                     loss_scale=1.0 / group_size,
                     audit_lateral_proxy=audit_lateral_proxy,
+                    residual_lateral_steps=residual_lateral_steps,
+                    residual_lateral_step_size=residual_lateral_step_size,
+                    residual_lateral_rule=residual_lateral_rule,
+                    residual_lateral_include_diagonal=residual_lateral_include_diagonal,
+                    residual_lateral_moment_normalization=(
+                        residual_lateral_moment_normalization
+                    ),
+                    residual_lateral_coefficient=residual_lateral_coefficient,
                 )
                 for layer_index in range(len(model.layers)):
                     prefix = f"layer_{layer_index}/lateral_proxy_"
@@ -222,6 +251,14 @@ def train_local_encoder(
                         proxy_norm_ratios[layer_index].append(
                             metrics[prefix + "norm_ratio"]
                         )
+                    residual_prefix = f"layer_{layer_index}/"
+                    for name, collection in (
+                        ("residual_state_rms", residual_state_rms),
+                        ("base_residual_state_rms", base_residual_state_rms),
+                        ("residual_dynamics_delta_rms", residual_dynamics_delta_rms),
+                    ):
+                        if residual_prefix + name in metrics:
+                            collection[layer_index].append(metrics[residual_prefix + name])
                 steps += 1
                 examples += len(features)
                 loss_sum += metrics["loss"]
@@ -238,6 +275,24 @@ def train_local_encoder(
         layer_lateral_delta_l2=tuple(
             float((state.lateral.detach().cpu() - old).square().sum().sqrt())
             for state, old in zip(model.states, lateral_before, strict=True)
+        ),
+        residual_lateral_delta_l2=tuple(
+            0.0
+            if state.residual_lateral is None
+            else float(
+                (
+                    state.residual_lateral.detach().cpu()
+                    - (
+                        old
+                        if old is not None
+                        else torch.zeros_like(state.residual_lateral, device="cpu")
+                    )
+                )
+                .square()
+                .sum()
+                .sqrt()
+            )
+            for state, old in zip(model.states, residual_lateral_before, strict=True)
         ),
         parameter_numel=sum(parameter.numel() for parameter in model.encoder_parameters()),
         dynamic_state_numel=sum(state.dynamic_state_numel() for state in model.states),
@@ -257,6 +312,18 @@ def train_local_encoder(
             sum(values) / len(values) if values else 0.0 for values in proxy_norm_ratios
         ),
         lateral_proxy_audited_batches=tuple(len(values) for values in proxy_cosines),
+        residual_state_rms_mean=tuple(
+            sum(values) / len(values) if values else 0.0
+            for values in residual_state_rms
+        ),
+        base_residual_state_rms_mean=tuple(
+            sum(values) / len(values) if values else 0.0
+            for values in base_residual_state_rms
+        ),
+        residual_dynamics_delta_rms_mean=tuple(
+            sum(values) / len(values) if values else 0.0
+            for values in residual_dynamics_delta_rms
+        ),
     )
 
 
@@ -275,6 +342,12 @@ def local_train_step(
     optimizer_step: bool = True,
     loss_scale: float = 1.0,
     audit_lateral_proxy: bool = False,
+    residual_lateral_steps: int = 1,
+    residual_lateral_step_size: float = 0.1,
+    residual_lateral_rule: str = "dual_inhibitory",
+    residual_lateral_include_diagonal: bool = True,
+    residual_lateral_moment_normalization: str = "none",
+    residual_lateral_coefficient: float = 0.5,
 ) -> dict[str, float]:
     """Apply one optimizer step using independent per-layer TeReL losses."""
     model.train()
@@ -285,23 +358,98 @@ def local_train_step(
             normalization.train(index == active_layer)
     if zero_grad:
         optimizer.zero_grad(set_to_none=True)
-    layer_activations = model.forward_local(x, stop_after=active_layer)
+    residual_mode = covariance_mode == "residual_state"
+    if residual_mode and not detach_previous:
+        raise ValueError("residual-state TeReL requires detached temporal references")
+    if residual_mode and model.normalization not in {"none", "streaming_norm"}:
+        raise ValueError(
+            "residual-state TeReL requires identity or streaming normalization"
+        )
+    if residual_mode and model.normalization == "streaming_norm":
+        if any(
+            parameter.requires_grad
+            for normalization in model.normalizations
+            for parameter in normalization.parameters()
+        ):
+            raise ValueError(
+                "residual-state TeReL requires fixed-affine streaming normalization"
+            )
+    if residual_lateral_moment_normalization not in {"none", "features"}:
+        raise ValueError(
+            "residual_lateral_moment_normalization must be 'none' or 'features'"
+        )
+    layer_details = model.forward_local_details(x, stop_after=active_layer)
     losses = []
     layer_metrics = []
+    state_updates = []
     if active_layer is None:
-        selected = zip(layer_activations, model.states, strict=True)
+        selected = zip(layer_details, model.states, strict=True)
     else:
-        selected = ((layer_activations[-1], model.states[active_layer]),)
+        selected = ((layer_details[-1], model.states[active_layer]),)
     selected = tuple(selected)
-    for z, state in selected:
+    for (preactivation, _, z), state in selected:
         previous, valid = temporal_references(
             z,
             state=state,
             boundaries=boundaries,
             detach=detach_previous,
         )
-        if covariance_mode not in {"proxy", "shifted_proxy", "direct"}:
+        if covariance_mode not in {"proxy", "shifted_proxy", "direct", "residual_state"}:
             raise ValueError(f"Unsupported covariance_mode '{covariance_mode}'")
+        if residual_mode:
+            if residual_lateral_rule != "dual_inhibitory":
+                raise ValueError(
+                    "residual-state TeReL requires the dual inhibitory rule"
+                )
+            _, activation_residual = regularized_target_residual(
+                z=z,
+                previous=previous,
+                mean=state.mean,
+                variance=state.variance,
+                lateral=state.lateral,
+                pair_valid=valid,
+                coefficients=coefficients,
+                variance_target=variance_target,
+            )
+            base_neuron_state = torch.autograd.grad(
+                z,
+                preactivation,
+                grad_outputs=activation_residual,
+                retain_graph=True,
+            )[0].detach()
+            neuron_state = residual_lateral_dynamics(
+                base_state=base_neuron_state,
+                lateral=state.ensure_residual_lateral(),
+                coefficient=residual_lateral_coefficient,
+                steps=residual_lateral_steps,
+                step_size=residual_lateral_step_size,
+            )
+            target = (preactivation.detach() - neuron_state).detach()
+            loss = (
+                coefficients.similarity
+                / (z.shape[0] * z.shape[1])
+                * (preactivation - target).square().sum()
+            )
+            _, metrics = terel_loss(
+                z=z,
+                previous=previous,
+                mean=state.mean,
+                variance=state.variance,
+                lateral=state.lateral,
+                pair_valid=valid,
+                coefficients=coefficients,
+                variance_target=variance_target,
+                detach_previous=True,
+            )
+            metrics["residual_state_rms"] = neuron_state.square().mean().sqrt()
+            metrics["base_residual_state_rms"] = base_neuron_state.square().mean().sqrt()
+            metrics["residual_dynamics_delta_rms"] = (
+                base_neuron_state - neuron_state
+            ).square().mean().sqrt()
+            losses.append(loss)
+            layer_metrics.append(metrics)
+            state_updates.append((z, state, neuron_state))
+            continue
         objective_coefficients = coefficients
         if covariance_mode == "direct":
             objective_coefficients = LossCoefficients(
@@ -352,13 +500,25 @@ def local_train_step(
             metrics["covariance_loss"] = covariance_loss.detach()
         losses.append(loss)
         layer_metrics.append(metrics)
+        state_updates.append((z, state, None))
 
     total = torch.stack(losses).sum()
     (total * loss_scale).backward()
     if optimizer_step:
         optimizer.step()
-    for z, state in selected:
+    for z, state, residual_lateral_values in state_updates:
+        moment_scale = (
+            1.0 / z.shape[1]
+            if residual_lateral_moment_normalization == "features"
+            else 1.0
+        )
         state.update(z)
+        if residual_lateral_values is not None:
+            state.update_residual_lateral(
+                residual_lateral_values,
+                include_diagonal=residual_lateral_include_diagonal,
+                moment_scale=moment_scale,
+            )
 
     result = {"loss": float(total.detach())}
     metric_indices = range(len(layer_metrics)) if active_layer is None else (active_layer,)

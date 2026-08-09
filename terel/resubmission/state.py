@@ -21,12 +21,45 @@ class TeReLState(nn.Module):
         self.register_buffer("mean", torch.zeros(features))
         self.register_buffer("variance", torch.ones(features))
         self.register_buffer("lateral", torch.zeros(features, features))
+        self.register_buffer("residual_lateral", None)
         self.register_buffer("previous", torch.zeros(features))
         self.register_buffer("previous_centered", torch.zeros(features))
         self.register_buffer("has_previous", torch.tensor(False))
 
     def dynamic_state_numel(self) -> int:
         return sum(buffer.numel() for buffer in self.buffers())
+
+    @torch.no_grad()
+    def ensure_residual_lateral(self) -> torch.Tensor:
+        if self.residual_lateral is None:
+            self.residual_lateral = torch.zeros_like(self.lateral)
+        return self.residual_lateral
+
+    @torch.no_grad()
+    def update_residual_lateral(
+        self,
+        neuron_state: torch.Tensor,
+        *,
+        include_diagonal: bool,
+        moment_scale: float = 1.0,
+    ) -> None:
+        if neuron_state.ndim != 2 or neuron_state.shape[1] != self.mean.numel():
+            raise ValueError(
+                f"Expected neuron_state [batch, {self.mean.numel()}], "
+                f"got {tuple(neuron_state.shape)}"
+            )
+        if neuron_state.shape[0] == 0:
+            raise ValueError("Cannot update residual lateral state from an empty batch")
+        if moment_scale <= 0.0:
+            raise ValueError("moment_scale must be positive")
+        values = neuron_state.detach()
+        moment = moment_scale * values.T @ values / values.shape[0]
+        if not include_diagonal:
+            moment.fill_diagonal_(0.0)
+        residual_lateral = self.ensure_residual_lateral()
+        residual_lateral.mul_(self.lateral_momentum).add_(
+            moment, alpha=1.0 - self.lateral_momentum
+        )
 
     @torch.no_grad()
     def update(self, z: torch.Tensor) -> None:
@@ -36,7 +69,6 @@ class TeReLState(nn.Module):
             )
         if z.shape[0] == 0:
             raise ValueError("Cannot update state from an empty batch")
-
         values = z.detach()
         centered = values - self.mean
         batch_mean = values.mean(dim=0)
