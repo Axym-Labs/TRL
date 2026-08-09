@@ -64,6 +64,13 @@ def analyze_canonical_online(final_records, inhibited_records, reference_records
 
     training = final_records[0]["encoder_training"]
     resource = final_records[0]["resource_accounting"]
+    hidden_dims = tuple(final_records[0]["encoder_config"]["hidden_dims"])
+    if any(
+        tuple(record["encoder_config"]["hidden_dims"]) != hidden_dims
+        for record in final_records
+    ):
+        raise ValueError("final records must use the same hidden dimensions")
+    dense_cells = int(training["examples"]) * sum(width * width for width in hidden_dims)
     inhibited_accuracy = np.asarray(
         [record["metrics"]["accuracy"] for record in inhibited_records]
     )
@@ -91,6 +98,8 @@ def analyze_canonical_online(final_records, inhibited_records, reference_records
             "auxiliary_parameter_numel": int(training["auxiliary_parameter_numel"]),
             "feedforward_parameter_numel": int(training["parameter_numel"]),
             "optimizer_state_bytes": int(resource["optimizer_state_bytes"]),
+            "same_layer_matrix_vector_mac_proxy": 2 * dense_cells,
+            "same_layer_outer_product_mac_proxy": 2 * dense_cells,
         },
         "validation": {
             "seeds": inhibited_seeds,

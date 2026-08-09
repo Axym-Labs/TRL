@@ -16,7 +16,9 @@ def _record(seed, accuracy, rank, *, base=(0.6, 0.7), state=(0.5, 0.4)):
             "causal_dynamic_state_numel": 8,
             "auxiliary_parameter_numel": 12,
             "parameter_numel": 10,
+            "examples": 100,
         },
+        "encoder_config": {"hidden_dims": [3, 2]},
         "resource_accounting": {"optimizer_state_bytes": 0},
     }
 
@@ -33,6 +35,8 @@ def test_canonical_analysis_separates_final_and_matched_validation_evidence():
     assert analysis["final"]["causal_dynamic_state_numel"] == 8
     assert analysis["final"]["auxiliary_parameter_numel"] == 12
     assert analysis["final"]["optimizer_state_bytes"] == 0
+    assert analysis["final"]["same_layer_matrix_vector_mac_proxy"] == 2_600
+    assert analysis["final"]["same_layer_outer_product_mac_proxy"] == 2_600
 
 
 def test_canonical_analysis_requires_matched_validation_seeds():

@@ -33,5 +33,7 @@ among alternative configurations.
 
 For a layer of width `D`, causal state comprises `3D` scalars and one layer
 flag. The two `D × D` learned lateral operators are auxiliary parameters, not
-causal state. Optimizer state, temporary activations, and inference parameters
-are reported separately.
+causal state. Per observation, target construction and inhibition apply one
+operator each, and the two running updates form two rank-one outer products.
+Optimizer state, temporary activations, and inference parameters are reported
+separately.

@@ -20,6 +20,7 @@ configuration      5b080d918c4050506d80d416bcbd4441bce3d9f1f988e7eb9bedee03a1e59
 protocol source    fd7d698c6946289558ff85509e1098a24b078c3f351df468d21d82a989cd2476
 validation ledger  7ecd9eeb72d38d7c6952746e696c18c191f7293aa6ce7816dfdb07477797d8cb
 result records     eca357dd694a57be70477e6ccaab6f1cb4aaeadb0690a23afbc693c8594a2239
+analysis           72c79e80a7c180fee71150093df3347b2afa8cfb91753b09419120c83f939d68
 ```
 
 The record digest concatenates the five final files in lexical seed order. The

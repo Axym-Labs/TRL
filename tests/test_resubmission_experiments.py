@@ -25,6 +25,19 @@ def test_plain_sgd_has_no_momentum_or_adaptive_state():
     assert optimizer.state == {}
 
 
+def test_residual_operation_proxy_counts_both_dense_operators():
+    proxy = experiments._operation_proxy(
+        "terel_residual",
+        input_dim=2,
+        hidden_dims=(3, 2),
+        num_classes=2,
+        batch_size=1,
+        training={"examples": 10, "training_mode": "joint"},
+    )
+
+    assert proxy["same_layer_pairwise_mac_proxy"] == 4 * 10 * (3**2 + 2**2)
+
+
 def test_adam_component_ablation_accepts_explicit_betas():
     parameter = torch.nn.Parameter(torch.tensor([1.0]))
     optimizer = experiments._optimizer(

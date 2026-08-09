@@ -80,7 +80,8 @@ stored per layer. The representation and residual-state operators are two
 `D × D` auxiliary parameter matrices; they are weights, not temporal state.
 For the 784→512→256 encoder this is 2,304 per-neuron scalars and two layer
 flags, 655,360 auxiliary parameters, and 533,248 feedforward parameters. Plain
-SGD adds no optimizer state.
+SGD adds no optimizer state. Each observation applies the two auxiliary
+operators once and forms two rank-one updates.
 
 Locality permits dense same-layer communication. It does not imply neuron
 independence, biological realism, low energy, or efficient dense hardware.

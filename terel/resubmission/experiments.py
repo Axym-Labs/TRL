@@ -1,7 +1,8 @@
-from dataclasses import asdict, dataclass
 import os
 import random
 import time
+from dataclasses import asdict, dataclass
+from itertools import pairwise as adjacent_pairs
 
 import numpy as np
 
@@ -201,7 +202,7 @@ def _operation_proxy(
         dims = (input_dim, *hidden_dims)
         layer_weights = [
             in_features * out_features
-            for in_features, out_features in zip(dims[:-1], dims[1:], strict=True)
+            for in_features, out_features in adjacent_pairs(dims)
         ]
         weights = sum(layer_weights)
         if method == "bp":
@@ -217,7 +218,12 @@ def _operation_proxy(
             stage_examples = examples
             linear = 3 * examples * weights
         if method.startswith("terel_"):
-            pairwise = 2 * stage_examples * sum(width * width for width in hidden_dims)
+            dense_operations = 4 if method == "terel_residual" else 2
+            pairwise = (
+                dense_operations
+                * stage_examples
+                * sum(width * width for width in hidden_dims)
+            )
         elif method == "local_supcon":
             pairwise = (
                 2
@@ -516,7 +522,7 @@ def run_representation_experiment(
         encoder_training = {
             "epochs": 1,
             "steps": 1,
-            "examples": int(len(train_dataset)),
+            "examples": len(train_dataset),
             "valid_temporal_pairs": int(model.derivative_pair_count_),
             "seconds": time.perf_counter() - start_time,
         }
