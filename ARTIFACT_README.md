@@ -36,7 +36,7 @@ configuration      3e83ea66c03a621bbdc6f1a16a143c6dbf50643ae2b5213a1d78afba68ed0
 protocol           faab529f7dab0d2940a8e7f6dd662c482b9da64bcf661e78029378c9fb0a68da
 validation ledger  11faf7a030f9f76fd2174225ca8ba806d9439e0bbf63924b01361909ee3305cb
 result records     727a0e9c335d5281cd3037ef8f64ee68ba927e9e77e4c0741312d0e4a7dcde88
-analysis           edfbe6443f161491795f9eae8f0c01011df249f591c672c7325f261fb25f21c0
+analysis           d9b1b88f4acb24c2758cbe9b4396030352cd22f8df893a761c8c92458e6ab302
 ```
 
 ## Objective mechanisms

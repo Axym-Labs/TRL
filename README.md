@@ -4,9 +4,9 @@ TeReL learns deep slow features one observation at a time. A soft Slow Feature
 Analysis objective defines a detached regularized target. Each neuron tracks
 its preactivation residual to that target; presynaptic activity and the
 postsynaptic neuron state give the exact feedforward gradient before lateral
-inhibition. One learned inhibitory pass modifies this state, and pairs of the
-same states drive an anti-Hebbian lateral update. No error crosses a learned
-layer or persists through time.
+inhibition. One pass through a learned inhibitory operator modifies this state,
+and pairs of the same states drive an anti-Hebbian lateral update. No error
+crosses a learned layer or persists through time.
 
 On label-ordered MNIST, TeReL reaches 95.84 ± 0.07% accuracy after two data
 presentations using plain SGD, batch size one, and one lateral matrix-vector

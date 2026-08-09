@@ -13,7 +13,7 @@ Training uses plain SGD with learning rate 0.01, no momentum, no weight decay,
 and no optimizer state. The soft-SFA coefficients are `(1, 2.5, 1)`, the
 variance target is 1, and all running-statistic momenta are 0.99. Residual-state
 inhibition uses coefficient 1000 and one lateral pass of size 0.1. The matched
-mechanism control changes only the inhibition coefficient to zero.
+mechanism control omits that pass, giving the exact detached objective gradient.
 
 ## MNIST protocol
 
