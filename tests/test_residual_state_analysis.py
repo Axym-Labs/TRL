@@ -21,6 +21,9 @@ def _record(seed, accuracy, rank, base=(0.5, 0.6), settled=(0.4, 0.3)):
             "seconds": 10.0 + seed,
             "optimizer_steps": 100,
             "dynamic_state_numel": 20,
+            "causal_dynamic_state_numel": 8,
+            "auxiliary_parameter_numel": 12,
+            "parameter_numel": 10,
         },
         "resource_accounting": {
             "parameter_bytes": 40,
@@ -87,6 +90,8 @@ def test_renderers_keep_final_and_validation_roles_distinct():
     assert "4.00" in main
     assert "Raw final-run values" in appendix
     assert "1, 2, 3, 4, 5" in appendix
+    assert "Causal scalars" in appendix
+    assert "Auxiliary parameters" in appendix
     assert all(line == line.rstrip() for line in appendix.splitlines())
 
 

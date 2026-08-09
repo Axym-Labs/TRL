@@ -48,7 +48,7 @@ def resolve_configuration(
     encoder = dict(selection_plan["encoder_base"])
     encoder.update(selected.get("encoder", {}))
     if encoder.get("method") != "terel_residual":
-        raise ValueError("selected configuration is not residual-state TeReL-S")
+        raise ValueError("selected configuration is not samplewise TeReL")
 
     return {
         "schema_version": 1,

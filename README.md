@@ -62,6 +62,16 @@ uv run python -m terel.resubmission.residual_confirmatory freeze \
   --output artifacts/canonical-online-confirmatory-manifest.json
 ```
 
+Combine final records with the matched validation mechanism records using:
+
+```bash
+uv run python -m terel.resubmission.canonical_online_analysis \
+  --final artifacts/canonical-online-confirmatory-results/mnist/terel-online \
+  --inhibited-validation artifacts/canonical-online-validation-results/inhibition \
+  --reference-validation artifacts/canonical-online-validation-results/no-inhibition \
+  --output artifacts/canonical-online-analysis.json
+```
+
 ## Resource boundary
 
 At width `D`, the canonical path stores three causal scalars per neuron: the
@@ -82,7 +92,7 @@ optimization.
 
 The repository retains protocols for TeReL-Offline, Local SupCon,
 normalization-matched random features, direct covariance, objective ablations,
-classical SFA, incremental SFA, and PAMAP2. Their stable identifiers and
+classical SFA, and incremental SFA. Their stable identifiers and
 analysis commands are documented in `ARTIFACT_README.md`; the manuscript uses
 scientific names rather than internal run labels.
 

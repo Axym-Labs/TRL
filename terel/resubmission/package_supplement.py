@@ -3,10 +3,9 @@
 import argparse
 import hashlib
 import json
-from pathlib import Path
 import subprocess
 import zipfile
-
+from pathlib import Path
 
 TEXT_SUFFIXES = {
     ".bib",
@@ -23,13 +22,12 @@ TEXT_SUFFIXES = {
 }
 
 DEFAULT_ARTIFACT_PATHS = (
-    "residual-state-final-analysis.json",
-    "residual-state-final-manifest.json",
-    "residual-state-final-results",
-    "residual-state-selection-ledger.json",
-    "residual-state-validation-config.yaml",
-    "residual-state-validation-results",
-    "residual-state-diagnostic.npz",
+    "canonical-online-analysis.json",
+    "canonical-online-confirmatory-manifest.json",
+    "canonical-online-confirmatory-results",
+    "canonical-online-validation-results",
+    "canonical-mechanism-validation.yaml",
+    "canonical-mechanism-results",
     "batched-reference-analysis.json",
     "batched-reference-manifest.json",
     "batched-reference-results",
@@ -43,10 +41,6 @@ DEFAULT_ARTIFACT_PATHS = (
     "normalization-control-analysis.json",
     "normalization-control-manifest.json",
     "normalization-control-results",
-    "natural-stream-analysis.json",
-    "natural-stream-manifest.json",
-    "natural-stream-results",
-    "natural-stream-selection",
     "locality-audit-context.md",
     "locality-audit.json",
 )
@@ -68,13 +62,28 @@ SOURCE_EXCLUDED_FILES = {
     "all_comparison_runs.py",
     "all_comparison_runs_out.log",
     "tests/test_legacy_regressions.py",
+    "terel/resubmission/latest_review_analysis.py",
+    "terel/resubmission/review_patch_analysis.py",
+    "tests/test_resubmission_latest_review_analysis.py",
+    "tests/test_resubmission_review_patch_analysis.py",
     "train.py",
 }
 SOURCE_INCLUDED_CONFIGS = {
-    "configs/resubmission/residual-state-validation-ledger.json",
-    "configs/resubmission/residual-state-validation.yaml",
+    "configs/canonical-online-learning.yaml",
+    "configs/canonical-online-mechanism.yaml",
+    "configs/canonical-online-validation-ledger.json",
 }
-SOURCE_INCLUDED_DOCS = {"docs/residual-state-protocol.md"}
+SOURCE_INCLUDED_DOCS = {"docs/canonical-online-protocol.md"}
+
+PAPER_INCLUDED_FILES = {
+    ".gitignore",
+    "README.md",
+    "axym-publication.sty",
+    "main.pdf",
+    "main.tex",
+    "references.bib",
+}
+PAPER_INCLUDED_PREFIXES = ("figures/",)
 
 
 def sanitize_text_artifact(text, *, replacements):
@@ -112,6 +121,23 @@ def _supplement_source_files(repository):
         if normalized.startswith("docs/") and normalized not in SOURCE_INCLUDED_DOCS:
             continue
         selected.append(relative)
+    return selected
+
+
+def _supplement_paper_files(repository):
+    """Return the current manuscript while omitting unreferenced old material."""
+    selected = []
+    for relative in _tracked_files(repository):
+        normalized = relative.as_posix()
+        if (
+            normalized in PAPER_INCLUDED_FILES
+            or normalized.startswith(PAPER_INCLUDED_PREFIXES)
+            or (
+                normalized.startswith("generated_")
+                and normalized.endswith(".tex")
+            )
+        ):
+            selected.append(relative)
     return selected
 
 
@@ -196,7 +222,7 @@ def build_supplement_archive(
     for relative in _supplement_source_files(repository):
         add_file(repository / relative, Path("source") / relative, "tracked_source")
     if paper_repository is not None:
-        for relative in _tracked_files(paper_repository):
+        for relative in _supplement_paper_files(paper_repository):
             add_file(
                 paper_repository / relative,
                 Path("paper") / relative,

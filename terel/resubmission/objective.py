@@ -85,7 +85,7 @@ def regularized_target_residual(
     variance_target: float,
     lateral_reference: torch.Tensor | None = None,
 ):
-    """Construct the detached target whose residual gives the TeReL-S gradient."""
+    """Construct the detached target whose residual gives the samplewise gradient."""
     if coefficients.similarity <= 0.0:
         raise ValueError("regularized target construction requires positive similarity")
     if z.ndim != 2:

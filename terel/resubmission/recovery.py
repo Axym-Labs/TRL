@@ -92,7 +92,7 @@ def main(argv=None):
     parser.add_argument("--candidate", required=True)
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--device", default="cuda", choices=("cpu", "cuda"))
-    parser.add_argument("--output", default="artifacts/recovery-v2")
+    parser.add_argument("--output", default="artifacts/validation")
     arguments = parser.parse_args(argv)
     run_candidate(
         load_recovery_plan(arguments.config),

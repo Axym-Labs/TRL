@@ -43,6 +43,11 @@ def test_supplement_archive_includes_tracked_code_paper_and_artifacts(tmp_path):
         subprocess.run(["git", "init", "-q"], cwd=tracked_root, check=True)
         (tracked_root / relative).write_text(f"source={tracked_root}\n")
         subprocess.run(["git", "add", relative], cwd=tracked_root, check=True)
+    (paper / "appendix").mkdir()
+    (paper / "appendix" / "old.tex").write_text("development diary\n")
+    (paper / "figures").mkdir()
+    (paper / "figures" / "result.py").write_text("# final figure\n")
+    subprocess.run(["git", "add", "."], cwd=paper, check=True)
     artifacts.mkdir()
     (artifacts / "result.json").write_text(
         json.dumps({"path": str(private_source / "runs"), "accuracy": 0.97})
@@ -63,6 +68,8 @@ def test_supplement_archive_includes_tracked_code_paper_and_artifacts(tmp_path):
         names = set(archive.namelist())
         assert "TeReL-supplement/source/module.py" in names
         assert "TeReL-supplement/paper/main.tex" in names
+        assert "TeReL-supplement/paper/figures/result.py" in names
+        assert "TeReL-supplement/paper/appendix/old.tex" not in names
         packaged = archive.read("TeReL-supplement/artifacts/result.json").decode()
     assert str(private_source) not in packaged
     assert json.loads(packaged)["path"] == "artifacts/runs"
@@ -81,8 +88,12 @@ def test_supplement_archive_excludes_tracked_development_diary(tmp_path):
         "artifacts/recovery/seed.json": "{}\n",
         "previous_versions/old.py": "old source\n",
         ".codex-autoresearch.md": "private diary\n",
-        "configs/resubmission/recovery-v2.yaml": "old config\n",
+        "configs/resubmission/discarded-config.yaml": "old config\n",
         "configs/resubmission/residual-state-validation.yaml": "final config\n",
+        "configs/canonical-online-learning.yaml": "canonical config\n",
+        "configs/canonical-online-validation-ledger.json": "{}\n",
+        "configs/canonical-online-mechanism.yaml": "mechanism config\n",
+        "docs/canonical-online-protocol.md": "canonical protocol\n",
         "files/main.pdf": "old paper\n",
         "tests/test_legacy_regressions.py": "old regression\n",
     }
@@ -108,13 +119,17 @@ def test_supplement_archive_excludes_tracked_development_diary(tmp_path):
     assert not any("artifacts/recovery" in name for name in names)
     assert not any("previous_versions" in name for name in names)
     assert not any(".codex" in name for name in names)
-    assert not any("recovery-v2.yaml" in name for name in names)
+    assert not any("discarded-config.yaml" in name for name in names)
     assert not any("files/main.pdf" in name for name in names)
     assert not any("test_legacy_regressions.py" in name for name in names)
+    assert not any("residual-state-validation.yaml" in name for name in names)
+    assert "TeReL-supplement/source/configs/canonical-online-learning.yaml" in names
     assert (
-        "TeReL-supplement/source/configs/resubmission/residual-state-validation.yaml"
+        "TeReL-supplement/source/configs/canonical-online-validation-ledger.json"
         in names
     )
+    assert "TeReL-supplement/source/configs/canonical-online-mechanism.yaml" in names
+    assert "TeReL-supplement/source/docs/canonical-online-protocol.md" in names
 
 
 def test_default_supplement_includes_final_scientific_records(tmp_path):
@@ -124,15 +139,18 @@ def test_default_supplement_includes_final_scientific_records(tmp_path):
     artifacts.mkdir()
     subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
     for filename in (
-        "residual-state-final-analysis.json",
-        "residual-state-final-manifest.json",
-        "residual-state-validation-config.yaml",
+        "canonical-online-analysis.json",
+        "canonical-online-confirmatory-manifest.json",
+        "canonical-mechanism-validation.yaml",
         "objective-mechanism-analysis.json",
     ):
         (artifacts / filename).write_text("{}\n")
-    result = artifacts / "residual-state-final-results" / "mnist"
+    result = artifacts / "canonical-online-confirmatory-results" / "mnist"
     result.mkdir(parents=True)
     (result / "seed.json").write_text("{}\n")
+    validation = artifacts / "canonical-online-validation-results" / "inhibition"
+    validation.mkdir(parents=True)
+    (validation / "seed.json").write_text("{}\n")
     output = tmp_path / "supplement.zip"
 
     build_supplement_archive(
@@ -143,14 +161,23 @@ def test_default_supplement_includes_final_scientific_records(tmp_path):
 
     with zipfile.ZipFile(output) as archive:
         names = set(archive.namelist())
-    assert "TeReL-supplement/artifacts/residual-state-final-analysis.json" in names
-    assert "TeReL-supplement/artifacts/residual-state-final-manifest.json" in names
-    assert "TeReL-supplement/artifacts/residual-state-validation-config.yaml" in names
+    assert (
+        "TeReL-supplement/artifacts/canonical-online-analysis.json" in names
+    )
+    assert (
+        "TeReL-supplement/artifacts/canonical-online-confirmatory-manifest.json"
+        in names
+    )
+    assert "TeReL-supplement/artifacts/canonical-mechanism-validation.yaml" in names
     assert (
         "TeReL-supplement/artifacts/objective-mechanism-analysis.json"
         in names
     )
     assert (
-        "TeReL-supplement/artifacts/residual-state-final-results/mnist/seed.json"
+        "TeReL-supplement/artifacts/canonical-online-confirmatory-results/mnist/seed.json"
+        in names
+    )
+    assert (
+        "TeReL-supplement/artifacts/canonical-online-validation-results/inhibition/seed.json"
         in names
     )

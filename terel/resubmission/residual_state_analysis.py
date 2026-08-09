@@ -1,4 +1,4 @@
-"""Analyze the frozen residual-state TeReL-S evaluation."""
+"""Analyze a final samplewise TeReL evaluation."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ def analyze_residual_state_evaluation(records: list[dict], validation_ledger: di
     if any(record.get("evaluation_split") != "test" for record in records):
         raise ValueError("all final records must use the test evaluation split")
     if any(record.get("method") != "terel_residual" for record in records):
-        raise ValueError("all final records must use residual-state TeReL-S")
+        raise ValueError("all final records must use samplewise TeReL")
     if not validation_ledger.get("selection_complete"):
         raise ValueError("validation selection must be complete")
 
@@ -79,6 +79,21 @@ def analyze_residual_state_evaluation(records: list[dict], validation_ledger: di
             "optimizer_steps": int(records[0]["encoder_training"]["optimizer_steps"]),
             "dynamic_state_numel": int(
                 records[0]["encoder_training"]["dynamic_state_numel"]
+            ),
+            "causal_dynamic_state_numel": int(
+                records[0]["encoder_training"].get(
+                    "causal_dynamic_state_numel",
+                    records[0]["encoder_training"]["dynamic_state_numel"],
+                )
+            ),
+            "auxiliary_parameter_numel": int(
+                records[0]["encoder_training"].get("auxiliary_parameter_numel", 0)
+            ),
+            "feedforward_parameter_numel": int(
+                records[0]["encoder_training"].get(
+                    "parameter_numel",
+                    records[0]["resource_accounting"]["parameter_bytes"] // 4,
+                )
             ),
             "resource_accounting": dict(records[0]["resource_accounting"]),
         },
@@ -112,7 +127,7 @@ def render_results_latex(analysis: dict) -> str:
             r"\begin{table}[H]",
             r"\centering",
             r"\small",
-            r"\caption{Residual-state TeReL-S evidence. Final accuracy is reported as mean $\pm$ sample standard deviation. The mechanism effect is paired on the train-derived validation split; its interval is a 95\% Student-$t$ interval.}",
+            r"\caption{Samplewise \TeReL{} evidence. Final accuracy is reported as mean $\pm$ sample standard deviation. The inhibition effect is paired on the validation split; its interval is a 95\% Student-$t$ interval.}",
             r"\label{tab:residual-state-primary}",
             r"\begin{tabular}{lcc}",
             r"\toprule",
@@ -151,7 +166,7 @@ def render_appendix_latex(analysis: dict) -> str:
             r"\begin{table}[H]",
             r"\centering",
             r"\small",
-            r"\caption{Raw final-run values for residual-state TeReL-S. Accuracy is in percent.}",
+            r"\caption{Raw final-run values for samplewise \TeReL{}. Accuracy is in percent.}",
             r"\label{tab:residual-state-raw}",
             r"\begin{tabular}{ll}",
             r"\toprule",
@@ -167,18 +182,18 @@ def render_appendix_latex(analysis: dict) -> str:
             r"\begin{table}[H]",
             r"\centering",
             r"\small",
-            r"\caption{Training resources for residual-state TeReL-S. The CPU time is mean $\pm$ sample standard deviation across final runs.}",
+            r"\caption{Training resources for samplewise \TeReL{}. Causal state, auxiliary parameters, feedforward parameters, and optimizer state are reported separately.}",
             r"\label{tab:residual-state-resources}",
             r"\begin{tabular}{rrrrr}",
             r"\toprule",
-            r"Updates & Dynamic scalars & Parameters (MiB) & Optimizer (MiB) & CPU seconds \\",
+            r"Updates & Causal scalars & Auxiliary parameters & Feedforward parameters & Optimizer bytes \\",
             r"\midrule",
             (
-                f"{final['optimizer_steps']:,} & {final['dynamic_state_numel']:,} & "
-                f"{resources['parameter_bytes'] / 2**20:.3f} & "
-                f"{resources['optimizer_state_bytes'] / 2**20:.3f} & "
-                f"{final['encoder_seconds']['mean']:.1f} $\\pm$ "
-                f"{final['encoder_seconds']['sample_sd']:.1f} \\\\"
+                f"{final['optimizer_steps']:,} & "
+                f"{final['causal_dynamic_state_numel']:,} & "
+                f"{final['auxiliary_parameter_numel']:,} & "
+                f"{final['feedforward_parameter_numel']:,} & "
+                f"{resources['optimizer_state_bytes']:,} \\\\"
             ),
             r"\bottomrule",
             r"\end{tabular}",

@@ -413,7 +413,7 @@ def test_dual_lateral_rule_preserves_representation_state_and_learns_from_residu
 
 
 def test_zero_coupling_residual_state_matches_fixed_affine_streaming_norm_update():
-    """The residual target must retain the exact TeReL-S weight gradient."""
+    """The residual target must retain the exact samplewise weight gradient."""
     torch.manual_seed(53)
     reference = LayerLocalEncoder(
         input_dim=2,
