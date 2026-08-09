@@ -23,29 +23,58 @@ TEXT_SUFFIXES = {
 }
 
 DEFAULT_ARTIFACT_PATHS = (
-    "confirmatory-analysis-v2.json",
-    "confirmatory-manifest-v2.json",
-    "confirmatory-protocol-v2.md",
-    "confirmatory-results-v2",
-    "confirmatory-results",
+    "residual-state-final-analysis.json",
+    "residual-state-final-manifest.json",
+    "residual-state-final-results",
+    "residual-state-selection-ledger.json",
+    "residual-state-validation-config.yaml",
+    "residual-state-validation-results",
+    "residual-state-diagnostic.npz",
+    "batched-reference-analysis.json",
+    "batched-reference-manifest.json",
+    "batched-reference-results",
+    "objective-mechanism-analysis.json",
+    "objective-mechanism-protocol.md",
+    "objective-mechanism-results",
+    "local-comparator-analysis.json",
+    "local-comparator-selection-analysis.json",
+    "local-comparator-final-results",
+    "local-comparator-validation-results",
+    "normalization-control-analysis.json",
+    "normalization-control-manifest.json",
+    "normalization-control-results",
+    "natural-stream-analysis.json",
+    "natural-stream-manifest.json",
+    "natural-stream-results",
+    "natural-stream-selection",
     "locality-audit-context.md",
     "locality-audit.json",
-    "latest-review-analysis-v4.json",
-    "latest-review-confirmatory-manifest-v4.json",
-    "latest-review-confirmatory-results-v4",
-    "latest-review-control-protocol-v4.md",
-    "mechanism-audit-analysis-v2.json",
-    "mechanism-audit-analysis-v2-regenerated.json",
-    "mechanism-audit-protocol-v2.md",
-    "mechanism-audit-results-v2",
-    "recovery-results-v2",
-    "review-patch-analysis-v3.json",
-    "review-patch-confirmatory-analysis-v3.json",
-    "review-patch-confirmatory-manifest-v3.json",
-    "review-patch-confirmatory-results-v3",
-    "review-patch-validation-v3",
-    "selection-results-final",
 )
+
+SOURCE_EXCLUDED_PREFIXES = (
+    ".codex/",
+    "analysis/",
+    "analysis_outputs/",
+    "artifacts/",
+    "comparison/",
+    "experiments_mnist/",
+    "files/",
+    "previous_versions/",
+    "runs/",
+    "scripts/",
+)
+SOURCE_EXCLUDED_FILES = {
+    ".codex-autoresearch.md",
+    "all_comparison_runs.py",
+    "all_comparison_runs_out.log",
+    "tests/test_legacy_regressions.py",
+    "train.py",
+}
+SOURCE_INCLUDED_CONFIGS = {
+    "configs/resubmission/residual-state-validation-ledger.json",
+    "configs/resubmission/residual-state-validation.yaml",
+}
+SOURCE_INCLUDED_DOCS = {"docs/residual-state-protocol.md"}
 
 
 def sanitize_text_artifact(text, *, replacements):
@@ -67,6 +96,23 @@ def _tracked_files(repository):
         capture_output=True,
     )
     return [Path(item.decode()) for item in completed.stdout.split(b"\0") if item]
+
+
+def _supplement_source_files(repository):
+    """Return final source while omitting tracked development-diary material."""
+    selected = []
+    for relative in _tracked_files(repository):
+        normalized = relative.as_posix()
+        if normalized in SOURCE_EXCLUDED_FILES:
+            continue
+        if normalized.startswith(SOURCE_EXCLUDED_PREFIXES):
+            continue
+        if normalized.startswith("configs/") and normalized not in SOURCE_INCLUDED_CONFIGS:
+            continue
+        if normalized.startswith("docs/") and normalized not in SOURCE_INCLUDED_DOCS:
+            continue
+        selected.append(relative)
+    return selected
 
 
 def _artifact_files(artifact_root, requested_paths):
@@ -109,6 +155,7 @@ def build_supplement_archive(
     output_path,
     artifact_paths=DEFAULT_ARTIFACT_PATHS,
     paper_repository=None,
+    private_roots=(),
 ):
     repository = Path(repository).resolve()
     artifact_root = Path(artifact_root).resolve()
@@ -126,6 +173,8 @@ def build_supplement_archive(
     }
     if paper_repository is not None:
         replacements[str(paper_repository)] = "paper"
+    for private_root in private_roots:
+        replacements[str(Path(private_root).resolve())] = "artifacts"
     artifact_files, missing = _artifact_files(artifact_root, artifact_paths)
     payloads = []
     manifest_entries = []
@@ -144,7 +193,7 @@ def build_supplement_archive(
             }
         )
 
-    for relative in _tracked_files(repository):
+    for relative in _supplement_source_files(repository):
         add_file(repository / relative, Path("source") / relative, "tracked_source")
     if paper_repository is not None:
         for relative in _tracked_files(paper_repository):
@@ -190,12 +239,19 @@ def main(argv=None):
     parser.add_argument("--artifact-root", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--paper-repository")
+    parser.add_argument(
+        "--private-root",
+        action="append",
+        default=[],
+        help="Private source prefix to rewrite as 'artifacts' inside text files",
+    )
     arguments = parser.parse_args(argv)
     manifest = build_supplement_archive(
         repository=arguments.repository,
         artifact_root=arguments.artifact_root,
         output_path=arguments.output,
         paper_repository=arguments.paper_repository,
+        private_roots=arguments.private_root,
     )
     print(
         json.dumps(

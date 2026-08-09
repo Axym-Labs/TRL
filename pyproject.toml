@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "terel-local-learning"
 version = "0.2.0"
-description = "Corrected and guarded TeReL experiments"
+description = "Neuron-local slow-feature learning with TeReL"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [

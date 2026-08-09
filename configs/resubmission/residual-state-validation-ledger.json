@@ -1,0 +1,38 @@
+{
+  "effective_rank": {
+    "terel_s_reference": {
+      "mean": 80.25343996213591,
+      "values": [79.99862112298933, 79.99831289514792, 80.76338586827048]
+    },
+    "terel_s_residual": {
+      "mean": 83.72663012908119,
+      "values": [83.5335665858467, 83.05077279390736, 84.5955510074895]
+    }
+  },
+  "paired_accuracy": {
+    "residual_minus_reference": {
+      "mean": 0.0300666666666667,
+      "sample_sd": 0.0012096831541083054,
+      "student_t_ci95": [0.0270616471242771, 0.0330716862090562],
+      "values": [0.0305, 0.031, 0.0287]
+    },
+    "terel_s_reference": {
+      "mean": 0.9250666666666667,
+      "sample_sd": 0.001069267662156373,
+      "student_t_ci95": [0.922410458543149, 0.9277228747901844],
+      "values": [0.9245, 0.9244, 0.9263]
+    },
+    "terel_s_residual": {
+      "mean": 0.9551333333333333,
+      "sample_sd": 0.00023094010767588897,
+      "student_t_ci95": [0.9545596463027, 0.9557070203639666],
+      "values": [0.955, 0.9554, 0.955]
+    }
+  },
+  "schema_version": 1,
+  "selected_configuration_id": "terel-s-residual",
+  "selection_complete": true,
+  "selection_seeds": [101, 102, 103],
+  "selection_split": "validation",
+  "selection_statement": "One residual-state method was selected on the train-derived validation split; no held-out alternatives are permitted."
+}

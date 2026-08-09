@@ -1,181 +1,137 @@
 # Temporal Regularized Learning (TeReL)
 
-TeReL trains each layer of a nonlinear encoder from temporal coherence,
-anti-collapse variance expansion, and a same-layer decorrelation signal. The
-formulation is a deep neuron-local, soft-constraint form of Slow Feature
-Analysis. Canonical TeReL is neuron-local in space, retaining short gradients
-between adjacent examples inside a chunk. TeReL-S also detaches time; running
-statistics and a dense lateral operator then provide bounded-history state.
+TeReL-S learns deep slow features with credit assignment local in space and
+time. A soft Slow Feature Analysis objective defines a detached regularized
+target. Each neuron tracks its preactivation residual to that target; the
+uncoupled state's outer product with presynaptic activity is the exact
+feedforward gradient. Learned inhibition settles the state used for the
+feedforward update and learns lateral connections from pairs of the same
+states. No error crosses a learned layer or persists through time.
 
-This repository contains the validated implementation and final experiment
-pipeline for the paper. Label-ordered MNIST is explicitly treated as
-controlled temporal supervision; chronological PAMAP2 is a secondary
-natural-order stress test.
+The samplewise method is the center of the paper. TeReL-batched is a less
+restrictive performance reference that keeps short temporal graphs and uses
+BatchNorm. Label-ordered MNIST is treated as controlled temporal supervision,
+not unlabeled self-supervision. Chronological PAMAP2 is a secondary stress test
+whose result is inconclusive.
 
-Exact execution identifiers and checksum ledgers are collected in
+On final MNIST evaluation, residual-state TeReL-S reaches 95.50 ± 0.19%
+accuracy after two data presentations. On the train-derived validation split,
+it improves an otherwise identical zero-coupling samplewise reference by 3.01
+points, with 95% Student-t interval [2.71, 3.31], while preserving effective
+rank. TeReL-batched reaches 97.30 ± 0.07%; its matched backpropagation and Local
+SupCon references reach 98.34 ± 0.08% and 96.98 ± 0.10%.
+
+Exact execution identifiers and checksums are in
 [`ARTIFACT_README.md`](ARTIFACT_README.md).
 
 ## Quick start
 
 Python 3.12 and all direct dependencies are pinned in `pyproject.toml` and
-`uv.lock`. Each run also enables deterministic PyTorch algorithms and records
-the Python, package, CUDA, cuDNN, CPU, and GPU environment in its run
-manifest.
+`uv.lock`.
 
 ```bash
 uv sync --extra test
 uv run pytest -q
 ```
 
-The fidelity suite covers objective signs and detachments, every-layer updates,
-matched readouts, greedy scheduling, fixed streaming state, samplewise graph
-release, split isolation, BP construction, and evaluation-protocol integrity.
+The test suite checks target-gradient equivalence, the preactivation outer
+product, inhibitory sign and dynamics, use of the same neuron states at lateral
+synapses, cross-layer and temporal detachment, dynamic-state size, data roles,
+baselines, and frozen-protocol integrity.
 
-## Reproduce the experiments
+## Reproduce residual-state TeReL-S
 
-1. Download MNIST and update `data_root` in the v2 plans for your machine.
-2. Run candidates from the validation-only selection plans with seeds
-   101, 202, and 303. For example:
+Update `data_root` in
+`configs/resubmission/residual-state-validation.yaml` for your MNIST location.
+The validation plan contains exactly the selected method and its matched
+zero-coupling reference.
 
 ```bash
 uv run python -m terel.resubmission.recovery \
-  --config configs/resubmission/recovery-v2.yaml \
-  --candidate canonical-recovered-bn \
+  --config configs/resubmission/residual-state-validation.yaml \
+  --candidate terel-s-residual \
   --seed 101 \
-  --output artifacts/recovery-v2 \
-  --device cuda
+  --output artifacts/residual-state-validation \
+  --device cpu
 ```
 
-The complete candidate registry is in `recovery-v2.yaml`; the samplewise study
-uses `streaming-recovery-v2.yaml`. Final choices and all validation records are
-summarized in `validation-ledger-v2.json`. One-factor controls use
-`mechanism-audit-v2.yaml` with the same runner. These executed filenames are
-retained for artifact reproducibility; the paper uses scientific names only.
-
-3. From a clean commit, freeze the exact matrix using the v2 protocol and
-validation ledger. Then run it with the explicit test flag:
+The final manifest is built only from a clean source tree, the complete
+validation ledger, and the protocol document.
 
 ```bash
-uv run python -m terel.resubmission.confirmatory_v2 \
-  --matrix configs/resubmission/confirmatory-matrix-v2.yaml \
-  --validation-ledger configs/resubmission/validation-ledger-v2.json \
-  --protocol /path/to/confirmatory-protocol-v2.md \
+uv run python -m terel.resubmission.residual_confirmatory freeze \
+  --selection-plan configs/resubmission/residual-state-validation.yaml \
+  --validation-ledger configs/resubmission/residual-state-validation-ledger.json \
+  --protocol docs/residual-state-protocol.md \
   --repository . \
-  --output artifacts/confirmatory-manifest-v2.json
-uv run python -m terel.resubmission.confirmatory run \
-  --manifest artifacts/confirmatory-manifest-v2.json \
-  --validation-ledger configs/resubmission/validation-ledger-v2.json \
-  --protocol /path/to/confirmatory-protocol-v2.md \
+  --output artifacts/residual-state-confirmatory-manifest.json
+
+uv run python -m terel.resubmission.residual_confirmatory run \
+  --manifest artifacts/residual-state-confirmatory-manifest.json \
+  --validation-ledger configs/resubmission/residual-state-validation-ledger.json \
+  --protocol docs/residual-state-protocol.md \
   --repository . \
-  --output artifacts/confirmatory-results-v2 \
-  --device cuda \
+  --output artifacts/residual-state-confirmatory \
+  --device cpu \
   --allow-test
 ```
 
-Runs are written atomically per seed and resume safely with the same manifest.
-The primary matrix compares canonical TeReL, a final-layer readout, TeReL-S,
-an unnormalized random encoder, and data-presentation-matched BP. A separate
-one-row manifest specifies the normalization-matched random control below.
-
-### Primary result
-
-Canonical TeReL reaches 97.30 ± 0.07% accuracy versus 98.34 ± 0.08% for
-data-presentation-matched BP and 95.13 ± 0.27% for the
-no-normalization random encoder. The paired gaps are -1.04 points to BP and
-+2.17 points to that random reference. The last layer retains 97.14%,
-and TeReL-S reaches 96.29%. The tuned batch-size-one TeReL-S configuration
-reaches 95.14 ± 0.04% validation accuracy with effective rank 112.8, fixed
-state, and no retained temporal graph.
-
-A validation-only audit changes one factor at a time under the canonical
-protocol. Removing temporal coherence loses 8.18
-points; shuffling away class persistence loses 7.55. Removing variance
-expansion collapses median variance to `7.7e-5`, while removing decorrelation
-leaves variance high but collapses effective rank to 2.8. These controls are
-mechanism evidence, not post-test model selection.
-
-The matched label-aware comparator uses a six-candidate validation grid, which
-selects Local SupCon at learning rate `1e-3` and temperature `0.1`; its five-seed mean is
-96.98 ± 0.10%, versus 97.30 ± 0.07% for canonical TeReL (paired difference
-0.32 points, 95% Student-t interval [0.13, 0.52]). A separate validation audit
-measures about 0.76 cosine alignment between TeReL's lagged and same-batch
-lateral directions; the exact direct-covariance control reaches 96.93%.
-
-The normalization-matched random row keeps its hidden weights, biases, and
-BatchNorm affine parameters at their seed-specific initialization. One
-no-gradient pass over the 50,000-example training subset calibrates only the
-BatchNorm running statistics before the unchanged all-layer probe. Across the
-same five test seeds, this control reaches 95.35 ± 0.19%; canonical TeReL is
-1.95 points higher with a paired 95% Student-t interval [1.64, 2.25]. The
-calibration treatment, five seeds, and stopping rule are specified in
-`latest-review-confirmatory-matrix-v4.yaml` and
-`latest-review-validation-ledger-v4.json`.
-
-## Analyze results and audit locality
+Runs are written atomically and resume against the same manifest. Analyze the
+completed records and generate the manuscript tables with:
 
 ```bash
-uv run python -m terel.resubmission.analysis_v2 \
-  --results artifacts/confirmatory-results-v2 \
-  --streaming-results artifacts/streaming-recovery-v2 \
-  --analysis-output artifacts/confirmatory-analysis-v2.json \
-  --results-tex artifacts/generated_results_v2.tex \
-  --appendix-tex artifacts/generated_appendix_results_v2.tex
-
-uv run python -m terel.resubmission.mechanism_analysis_v2 \
-  --reference-results artifacts/recovery-v2 \
-  --audit-results artifacts/mechanism-audit-results-v2 \
-  --analysis-output artifacts/mechanism-audit-analysis-v2-regenerated.json \
-  --results-tex artifacts/generated-mechanism-results-v2.tex
-
-uv run python -m terel.resubmission.latest_review_analysis \
-  --control-results artifacts/latest-review-confirmatory-results-v4 \
-  --reference-results artifacts/confirmatory-results-v2 \
-  --analysis-output artifacts/latest-review-analysis-v4.json \
-  --results-tex artifacts/generated-latest-review-v4.tex
+uv run python -m terel.resubmission.residual_state_analysis \
+  --results artifacts/residual-state-confirmatory \
+  --validation-ledger configs/resubmission/residual-state-validation-ledger.json \
+  --analysis-output artifacts/residual-state-analysis.json \
+  --results-tex artifacts/generated-residual-results.tex \
+  --appendix-tex artifacts/generated-residual-appendix.tex
 ```
 
-The analysis preserves every raw seed and reports the mean, sample standard
-deviation, 10,000-resample percentile interval, and paired primary effects.
-It also records representation geometry, parameters, optimizer and dynamic
-state, peak memory, encoder examples, optimizer steps, wall time, and a
-declared operation proxy.
-The original mechanism JSON is retained for execution provenance; the
-`-regenerated` JSON is the byte-exact output of the reporting source supplied
-in the anonymous archive and produces the same numerical mechanism table.
+## Method boundary
 
-## Method and claim boundary
+- TeReL-S uses one observation per forward/backward call and retains
+  `2D² + 4D + 1` detached state scalars at width `D`. Two dense lateral matrices
+  remain an explicit training cost.
+- The representation matrix constructs the decorrelation part of the target.
+  A separate residual-state matrix acts through inhibitory settling dynamics.
+- The feedforward statistic has Hebbian two-factor form at the gradient level;
+  the descent sign remains explicit, and the experiments pass the gradient to
+  AdamW.
+- Locality permits dense same-layer communication. It does not imply neuron
+  independence, biological realism, low energy, or efficient present-day
+  hardware.
+- The TeReL-S/TeReL-batched accuracy difference is descriptive because their
+  batch size, normalization, schedule, and optimizer granularity differ.
 
-- TeReL's temporal, variance, and decorrelation structure is inherited at the
-  objective level from SFA and related regularized self-supervised methods.
-- The algorithmic contribution is the particular deep local parameterization,
-  detached population state, canonical within-chunk temporal signal, and
-  tracked same-layer lateral proxy. TeReL-S additionally detaches time.
-- Local credit assignment does not imply sparse communication: a width-`D`
-  layer stores `D² + 4D + 1` dynamic state elements.
-- Label-derived MNIST ordering is supervision through the data order. PAMAP2 is
-  a secondary natural-order stress test whose activity classes are withheld
-  from the encoder loss, although annotations determine transition removal and
-  boundaries; it is not the paper's headline.
-- Samplewise TeReL-S demonstrates fixed history and no temporal graph. Hardware
-  relevance remains a perspective; no energy-efficiency result is claimed.
+## Supporting evidence
+
+The repository also retains the frozen TeReL-batched, Local SupCon,
+normalization-matched random, direct-covariance, objective-ablation, classical
+SFA, IncSFA, and PAMAP2 protocols. Their stable artifact identifiers and
+analysis commands are documented in `ARTIFACT_README.md`; manuscript prose uses
+scientific names only.
 
 ## Repository layout
 
 ```text
-terel/resubmission/                 objectives, models, baselines, and protocol checks
-configs/resubmission/               executed validation and evaluation plans
-tests/test_resubmission_*.py        scientific and implementation-fidelity tests
-terel/ and previous_versions/       legacy exploratory code retained for provenance
+terel/resubmission/                 method, baselines, analyses, and protocol gates
+configs/resubmission/               validation and final configurations
+docs/                               scientific protocol records
+tests/                              mathematical and implementation-fidelity tests
 ```
 
-For anonymous review, use the portable supplement generated by
-`terel.resubmission.package_supplement`; it contains the code, frozen plans,
-raw records, analyses, and a redaction/checksum manifest without author links.
+The anonymous supplement is created with
+`terel.resubmission.package_supplement`; it contains code, paper source, frozen
+plans, ledgers, raw records, generated analyses, and a redaction/checksum
+manifest without dataset files. Its source filter excludes tracked diagnostic
+outputs, discarded configurations, previous versions, and internal work logs.
 
 ```bash
 uv run python -m terel.resubmission.package_supplement \
   --repository . \
-  --paper-repository /path/to/anonymous-paper-source \
-  --artifact-root /path/to/frozen-artifacts \
-  --output TeReL-anonymous-supplement.zip
+  --paper-repository /path/to/terel-paper \
+  --artifact-root /path/to/final-supplement \
+  --private-root /path/to/private-source-records \
+  --output /path/to/TeReL-anonymous-supplement.zip
 ```

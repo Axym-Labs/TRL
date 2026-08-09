@@ -16,7 +16,38 @@ uv sync --extra test
 uv run pytest -q
 ```
 
-## Primary MNIST evidence
+## Residual-state TeReL-S evidence
+
+```text
+execution commit   dead3d282648e6fe3f196faaf0156422a959973a
+manifest file      69624a1986a2bd16e09ec56a1b603db17a89312117ab02af70ce29d6bda85902
+configuration      c2f713c965d2588de81a0322115ae43d360fe36d9d6287056daf1177d3a0d35e
+protocol           4dfd2020239309bc229ba34cfe75e2f16da45a778e4002b3e1e58d215ec2d93d
+validation ledger  35beb7a58ef3a176d9ac87f340cf0930ff4e5cf0e8d1b03f3f29d5241b3bda81
+result records     12670633f992cd6f6feb5db3106bce3562db87ed86ff992bbeb5b023fae911c2
+analysis            c420b7c43e9fff2ecabe899c494b71d7cbf55c1dfa01899d2630d8808ede94c0
+```
+
+The record digest concatenates the five seed files in lexical filename order.
+The portable validation plan and resolved ledger are in
+`configs/resubmission/residual-state-validation.yaml` and
+`configs/resubmission/residual-state-validation-ledger.json`. The exact frozen
+protocol, manifest, ledger, and final records are included in the anonymous
+supplement. To rerun the immutable manifest, check out the execution commit
+shown above; a source change correctly invalidates its test gate.
+
+Generate the final analysis and LaTeX tables with:
+
+```bash
+uv run python -m terel.resubmission.residual_state_analysis \
+  --results artifacts/residual-state-confirmatory \
+  --validation-ledger configs/resubmission/residual-state-validation-ledger.json \
+  --analysis-output artifacts/residual-state-analysis.json \
+  --results-tex artifacts/generated-residual-results.tex \
+  --appendix-tex artifacts/generated-residual-appendix.tex
+```
+
+## TeReL-batched MNIST evidence
 
 ```text
 execution commit  02afd90cf6927a588aa424d61cb86c6876b25c17
@@ -69,46 +100,27 @@ record digest     edbdf926351a3c84c028cdb11a364dba957412fbf05c21695902ae9d1901f5
 analysis          fc98d9073064ae78e7e8bd93be34b5484620d7d4735c29ffdd9cfc8af20ac9eb
 ```
 
-## Analysis commands
+## Anonymous supplement
 
-The source archive retains the executed `v2`/`v3`/`v4` filenames as stable
-artifact identifiers.
+The archive uses scientific filenames such as
+`residual-state-final-results`, `batched-reference-results`,
+`objective-mechanism-results`, and `local-comparator-validation-results`.
+Tracked diagnostic outputs, discarded configurations, partial ledgers,
+previous versions, and internal work logs are excluded.
+
+Build it from the clean final artifact directory with:
 
 ```bash
-uv run python -m terel.resubmission.confirmatory run \
-  --manifest artifacts/confirmatory-manifest-v2.json \
-  --validation-ledger configs/resubmission/validation-ledger-v2.json \
-  --protocol /path/to/confirmatory-protocol-v2.md \
+uv run python -m terel.resubmission.package_supplement \
   --repository . \
-  --output artifacts/confirmatory-results-v2 \
-  --device cuda \
-  --allow-test
-
-uv run python -m terel.resubmission.analysis_v2 \
-  --results artifacts/confirmatory-results-v2 \
-  --streaming-results artifacts/streaming-recovery-v2 \
-  --analysis-output artifacts/confirmatory-analysis-v2.json \
-  --results-tex artifacts/generated_results_v2.tex \
-  --appendix-tex artifacts/generated_appendix_results_v2.tex
-
-uv run python -m terel.resubmission.mechanism_analysis_v2 \
-  --reference-results artifacts/recovery-v2 \
-  --audit-results artifacts/mechanism-audit-results-v2 \
-  --analysis-output artifacts/mechanism-audit-analysis-v2-regenerated.json \
-  --results-tex artifacts/generated-mechanism-results-v2.tex
-
-uv run python -m terel.resubmission.review_patch_analysis \
-  --validation-results artifacts/review-patch-validation-v3 \
-  --confirmatory-results artifacts/review-patch-confirmatory-results-v3 \
-  --reference-results artifacts/confirmatory-results-v2 \
-  --output artifacts/review-patch-validation-analysis-v3.json \
-  --confirmatory-output artifacts/review-patch-confirmatory-analysis-v3.json
-
-uv run python -m terel.resubmission.latest_review_analysis \
-  --control-results artifacts/latest-review-confirmatory-results-v4 \
-  --reference-results artifacts/confirmatory-results-v2 \
-  --analysis-output artifacts/latest-review-analysis-v4.json
+  --paper-repository /path/to/terel-paper \
+  --artifact-root /path/to/final-supplement \
+  --private-root /path/to/private-source-records \
+  --output /path/to/TeReL-anonymous-supplement.zip
 ```
+
+`SUPPLEMENT.md` maps the scientific filenames to the claims and gives the
+portable reanalysis command.
 
 ## PAMAP2 stress-test evidence
 

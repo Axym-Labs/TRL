@@ -1,57 +1,54 @@
 # Anonymous TeReL supplement
 
-This supplement contains the implementation, frozen plans, validation ledgers,
-raw per-seed records, analysis outputs, manuscript source, and fidelity tests
-used by the revised paper. Dataset files are not redistributed.
+This archive contains the final implementation, paper source, frozen plans,
+selection ledgers, raw records, generated analyses, and fidelity tests. It does
+not contain datasets, discarded configurations, failed runs, or a development
+chronology.
 
 ## Setup
 
-Use Python 3.12 and install the locked environment:
+From the extracted `TeReL-supplement/` directory, use Python 3.12 and the
+locked environment:
 
 ```bash
-uv sync --extra test
-uv run pytest -q
+uv sync --project source --extra test
+uv run --project source pytest -q source/tests
 ```
 
-Place MNIST under `data/mnist` and PAMAP2 under `data/pamap2`, or update only
-the portable `data_root` fields before reproducing a run. The original executed
-records may contain path-only redactions. `redaction-manifest.json` gives both
-the SHA-256 of each source artifact before redaction and the packaged SHA-256;
-no metric or configuration number is altered.
+Place MNIST under `data/mnist` and PAMAP2 under `data/pamap2`, or change only
+the portable `data_root` field before reproducing a run. The executed records
+may contain path-only redactions. `redaction-manifest.json` records the source
+and packaged SHA-256 values for every file; redaction changes no metric,
+configuration value, or seed.
 
 ## Evidence map
 
-- `artifacts/confirmatory-results-v2/`: the five-seed corrected MNIST matrix.
-- `artifacts/mechanism-audit-results-v2/`: validation-only one-factor controls.
-- `artifacts/review-patch-validation-v3/`: Local SupCon selection and the
-  lagged/direct lateral controls requested in the latest review.
-- `artifacts/review-patch-confirmatory-results-v3/`: the selected Local SupCon
-  comparator on the five frozen test seeds.
-- `artifacts/confirmatory-results/`: the earlier frozen natural-order PAMAP2
-  stress test, retained as secondary evidence.
-- `source/configs/resubmission/` and `source/docs/`: resolved matrices,
-  validation ledgers, and protocols.
+- `artifacts/residual-state-final-*` contains the frozen TeReL-S manifest,
+  five final records, and their analysis.
+- `artifacts/residual-state-validation-*` contains the two-method selection
+  plan, resolved ledger, and matched residual-state comparison.
+- `artifacts/batched-reference-*` contains TeReL-batched, backpropagation, and
+  random-reference records.
+- `artifacts/objective-mechanism-*` contains the soft-SFA component ablations.
+- `artifacts/local-comparator-*` contains Local SupCon selection and final
+  records together with the lagged/direct-covariance control.
+- `artifacts/normalization-control-*` contains the BatchNorm-calibrated random
+  reference.
+- `artifacts/natural-stream-*` contains the PAMAP2 selection and final stress
+  test.
+- `paper/` contains the manuscript, generated tables, and figure sources.
 
-The code commit and configuration hashes stored in each confirmatory manifest
-are the execution identities. Path redaction does not change those embedded
-identities; use the redaction manifest when checking packaged file bytes.
-
-## Reanalysis
+## Reanalyze TeReL-S
 
 ```bash
-uv run python -m terel.resubmission.analysis_v2 \
-  --results artifacts/confirmatory-results-v2 \
-  --streaming-results artifacts/recovery-results-v2 \
-  --analysis-output /tmp/confirmatory-analysis-v2.json \
-  --results-tex /tmp/generated-results-v2.tex \
-  --appendix-tex /tmp/generated-appendix-v2.tex
-
-uv run python -m terel.resubmission.review_patch_analysis \
-  --validation-results artifacts/review-patch-validation-v3 \
-  --output /tmp/review-patch-analysis-v3.json \
-  --confirmatory-results artifacts/review-patch-confirmatory-results-v3 \
-  --reference-results artifacts/confirmatory-results-v2 \
-  --confirmatory-output /tmp/review-patch-confirmatory-analysis-v3.json \
-  --results-tex /tmp/generated-review-patch-v3.tex \
-  --appendix-tex /tmp/generated-review-patch-appendix-v3.tex
+uv run --project source python -m terel.resubmission.residual_state_analysis \
+  --results artifacts/residual-state-final-results \
+  --validation-ledger source/configs/resubmission/residual-state-validation-ledger.json \
+  --analysis-output /tmp/residual-state-analysis.json \
+  --results-tex /tmp/generated-residual-results.tex \
+  --appendix-tex /tmp/generated-residual-appendix.tex
 ```
+
+The execution commits and configuration hashes stored in the manifests are the
+run identities. The top-level redaction manifest is the byte-level audit trail
+for packaged files.
