@@ -181,6 +181,14 @@ def test_representation_diagnostics_respect_stream_boundaries():
     assert diagnostics["active_feature_fraction"] == 1.0
 
 
+def test_representation_diagnostics_reject_nonfinite_values_before_eigendecomposition():
+    representations = torch.tensor([[0.0, 1.0], [float("nan"), 2.0]])
+    boundaries = torch.tensor([True, False])
+
+    with pytest.raises(ValueError, match="non-finite"):
+        representation_diagnostics(representations, boundaries)
+
+
 def test_class_structure_diagnostics_quantify_separation_and_selectivity():
     representations = torch.tensor(
         [[-2.0, -1.0], [-1.0, -1.0], [-2.0, -2.0], [2.0, 1.0], [1.0, 1.0], [2.0, 2.0]]

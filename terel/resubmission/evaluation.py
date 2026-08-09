@@ -1,5 +1,5 @@
-from dataclasses import dataclass
 import time
+from dataclasses import dataclass
 
 import numpy as np
 import torch
@@ -178,6 +178,8 @@ def representation_diagnostics(representations: torch.Tensor, boundaries: torch.
     boundaries = boundaries.detach().cpu()
     if representations.ndim != 2 or boundaries.shape != (len(representations),):
         raise ValueError("representations and boundaries have incompatible shapes")
+    if not torch.isfinite(representations).all():
+        raise ValueError("representations contain non-finite values")
     variance = representations.var(dim=0, unbiased=False)
     centered = representations - representations.mean(dim=0)
     covariance = centered.T @ centered / max(len(centered), 1)
