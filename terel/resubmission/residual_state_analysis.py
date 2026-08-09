@@ -186,7 +186,7 @@ def render_appendix_latex(analysis: dict) -> str:
             r"\label{tab:residual-state-resources}",
             r"\begin{tabular}{rrrrr}",
             r"\toprule",
-            r"Updates & Causal scalars & Auxiliary parameters & Feedforward parameters & Optimizer bytes \\",
+            r"Updates & Causal values & Auxiliary parameters & Feedforward parameters & Optimizer bytes \\",
             r"\midrule",
             (
                 f"{final['optimizer_steps']:,} & "

@@ -90,7 +90,7 @@ def test_renderers_keep_final_and_validation_roles_distinct():
     assert "4.00" in main
     assert "Raw final-run values" in appendix
     assert "1, 2, 3, 4, 5" in appendix
-    assert "Causal scalars" in appendix
+    assert "Causal values" in appendix
     assert "Auxiliary parameters" in appendix
     assert all(line == line.rstrip() for line in appendix.splitlines())
 
