@@ -14,6 +14,8 @@ TEXT_SUFFIXES = {
     ".json",
     ".md",
     ".py",
+    ".sty",
+    ".tex",
     ".toml",
     ".tsv",
     ".txt",
@@ -84,6 +86,9 @@ PAPER_INCLUDED_FILES = {
     "references.bib",
 }
 PAPER_INCLUDED_PREFIXES = ("figures/",)
+PAPER_ARCHIVE_RENAMES = {
+    "axym-publication.sty": "paper-template.sty",
+}
 
 
 def sanitize_text_artifact(text, *, replacements):
@@ -191,6 +196,9 @@ def build_supplement_archive(
     )
     workspace_root = repository.parents[1]
     replacements = {
+        "axym-publication": "paper-template",
+        "Axym publication": "included publication",
+        "Axym": "Paper",
         str(workspace_root / "data" / "mnist"): "data/mnist",
         str(workspace_root / "data" / "pamap2"): "data/pamap2",
         str(artifact_root): "artifacts",
@@ -223,9 +231,10 @@ def build_supplement_archive(
         add_file(repository / relative, Path("source") / relative, "tracked_source")
     if paper_repository is not None:
         for relative in _supplement_paper_files(paper_repository):
+            archive_relative = Path(PAPER_ARCHIVE_RENAMES.get(relative.as_posix(), relative))
             add_file(
                 paper_repository / relative,
-                Path("paper") / relative,
+                Path("paper") / archive_relative,
                 "tracked_paper_source",
             )
     for source in artifact_files:

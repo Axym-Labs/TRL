@@ -76,6 +76,46 @@ def test_supplement_archive_includes_tracked_code_paper_and_artifacts(tmp_path):
     assert json.loads(packaged)["accuracy"] == 0.97
 
 
+def test_supplement_archive_anonymizes_paper_template_identifiers(tmp_path):
+    repository = tmp_path / "workspace" / "code"
+    paper = tmp_path / "workspace" / "paper"
+    artifacts = tmp_path / "artifacts"
+    for tracked_root in (repository, paper):
+        tracked_root.mkdir(parents=True)
+        subprocess.run(["git", "init", "-q"], cwd=tracked_root, check=True)
+    (repository / "module.py").write_text("# source\n")
+    subprocess.run(["git", "add", "."], cwd=repository, check=True)
+    (paper / "main.tex").write_text("\\usepackage{axym-publication}\n")
+    (paper / "axym-publication.sty").write_text(
+        "\\ProvidesPackage{axym-publication}\n\\definecolor{AxymInk}{HTML}{111827}\n"
+    )
+    (paper / "README.md").write_text("Uses the Axym publication template.\n")
+    subprocess.run(["git", "add", "."], cwd=paper, check=True)
+    artifacts.mkdir()
+    output = tmp_path / "supplement.zip"
+
+    build_supplement_archive(
+        repository=repository,
+        paper_repository=paper,
+        artifact_root=artifacts,
+        artifact_paths=(),
+        output_path=output,
+    )
+
+    with zipfile.ZipFile(output) as archive:
+        names = set(archive.namelist())
+        paper_text = "\n".join(
+            archive.read(name).decode()
+            for name in names
+            if name.startswith("TeReL-supplement/paper/")
+        )
+    assert "TeReL-supplement/paper/paper-template.sty" in names
+    assert not any("axym" in name.lower() for name in names)
+    assert "Axym" not in paper_text
+    assert "axym-publication" not in paper_text
+    assert "\\usepackage{paper-template}" in paper_text
+
+
 def test_supplement_archive_excludes_tracked_development_diary(tmp_path):
     repository = tmp_path / "workspace" / "code"
     artifacts = tmp_path / "artifacts"
