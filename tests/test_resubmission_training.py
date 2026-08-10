@@ -100,6 +100,32 @@ def test_one_local_step_changes_every_declared_encoder_layer():
         assert not torch.equal(old, layer.weight.detach())
 
 
+def test_local_step_stops_at_the_first_nonfinite_objective():
+    model = LayerLocalEncoder(
+        input_dim=1,
+        hidden_dims=(1,),
+        activation="identity",
+        statistics_momentum=0.9,
+        lateral_momentum=0.9,
+    )
+    optimizer = torch.optim.SGD(model.encoder_parameters(), lr=0.01)
+
+    with pytest.raises(FloatingPointError, match="non-finite"):
+        local_train_step(
+            model=model,
+            optimizer=optimizer,
+            x=torch.tensor([[float("nan")]]),
+            boundaries=torch.tensor([True]),
+            coefficients=LossCoefficients(
+                similarity=1.0,
+                variance=1.0,
+                covariance=1.0,
+            ),
+            variance_target=1.0,
+            detach_previous=True,
+        )
+
+
 def test_later_layer_loss_has_no_gradient_path_to_earlier_layer():
     """Removing the activation detachment must violate spatial locality."""
     model = LayerLocalEncoder(

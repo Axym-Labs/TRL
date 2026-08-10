@@ -788,6 +788,8 @@ def local_train_step(
         state_updates.append((z, state, None))
 
     total = torch.stack(losses).sum()
+    if not bool(torch.isfinite(total)):
+        raise FloatingPointError("TeReL objective became non-finite")
     (total * loss_scale).backward()
     if optimizer_step:
         optimizer.step()
