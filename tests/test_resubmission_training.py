@@ -126,6 +126,40 @@ def test_local_step_stops_at_the_first_nonfinite_objective():
         )
 
 
+def test_one_matrix_target_uses_only_the_offdiagonal_lateral_view():
+    model = LayerLocalEncoder(
+        input_dim=2,
+        hidden_dims=(2,),
+        activation="identity",
+        statistics_momentum=0.9,
+        lateral_momentum=0.9,
+    )
+    with torch.no_grad():
+        model.layers[0].weight.copy_(torch.eye(2))
+        model.layers[0].bias.zero_()
+        model.states[0].lateral.copy_(10.0 * torch.eye(2))
+    optimizer = torch.optim.SGD(model.encoder_parameters(), lr=0.01)
+
+    metrics = local_train_step(
+        model=model,
+        optimizer=optimizer,
+        x=torch.tensor([[1.0, 2.0]]),
+        boundaries=torch.tensor([True]),
+        coefficients=LossCoefficients(
+            similarity=1.0,
+            variance=0.0,
+            covariance=1.0,
+        ),
+        variance_target=1.0,
+        detach_previous=True,
+        covariance_mode="residual_state",
+        residual_lateral_steps=0,
+        lateral_matrix_mode="state_shared",
+    )
+
+    assert metrics["layer_0/covariance_loss"] == 0.0
+
+
 def test_later_layer_loss_has_no_gradient_path_to_earlier_layer():
     """Removing the activation detachment must violate spatial locality."""
     model = LayerLocalEncoder(

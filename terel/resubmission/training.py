@@ -623,6 +623,9 @@ def local_train_step(
                     "residual-state TeReL requires the dual inhibitory rule"
                 )
             lateral_reference = None
+            target_lateral = state.lateral - torch.diag_embed(
+                torch.diagonal(state.lateral)
+            )
             if residual_lateral_signal_offset == 1:
                 if z.shape[0] != 1:
                     raise ValueError(
@@ -638,7 +641,7 @@ def local_train_step(
                 previous=previous,
                 mean=state.mean,
                 variance=state.variance,
-                lateral=state.lateral,
+                lateral=target_lateral,
                 pair_valid=valid,
                 coefficients=coefficients,
                 variance_target=variance_target,
@@ -657,7 +660,7 @@ def local_train_step(
                     previous=previous,
                     mean=state.mean,
                     variance=state.variance,
-                    lateral=state.lateral,
+                    lateral=target_lateral,
                     pair_valid=valid,
                     coefficients=coefficients,
                     variance_target=variance_target,
@@ -717,7 +720,7 @@ def local_train_step(
                 previous=previous,
                 mean=state.mean,
                 variance=state.variance,
-                lateral=state.lateral,
+                lateral=target_lateral,
                 pair_valid=valid,
                 coefficients=coefficients,
                 variance_target=variance_target,
