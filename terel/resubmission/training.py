@@ -1,6 +1,6 @@
-from dataclasses import dataclass
 import math
 import time
+from dataclasses import dataclass
 
 import torch
 import torch.nn.functional as F
@@ -10,8 +10,10 @@ from .model import LayerLocalEncoder
 from .objective import (
     LossCoefficients,
     direct_offdiagonal_covariance_loss,
+    regularized_target_components,
     regularized_target_residual,
     residual_lateral_dynamics,
+    residual_lateral_offset_correction,
     temporal_references,
     terel_loss,
 )
@@ -23,12 +25,14 @@ def augment_mnist_batch(features: torch.Tensor, *, seed: int) -> torch.Tensor:
         raise ValueError("MNIST augmentation expects flattened 28x28 images")
     generator = torch.Generator(device=features.device).manual_seed(int(seed))
     count = len(features)
-    angles = (torch.rand(count, device=features.device, generator=generator) * 30.0 - 15.0)
+    angles = (
+        torch.rand(count, device=features.device, generator=generator) * 30.0 - 15.0
+    )
     angles = torch.deg2rad(angles)
     scales = torch.rand(count, device=features.device, generator=generator) * 0.2 + 0.9
-    translations = torch.rand(
-        count, 2, device=features.device, generator=generator
-    ) * 0.4 - 0.2
+    translations = (
+        torch.rand(count, 2, device=features.device, generator=generator) * 0.4 - 0.2
+    )
     cosine = torch.cos(angles) / scales
     sine = torch.sin(angles) / scales
     theta = torch.zeros(count, 2, 3, dtype=features.dtype, device=features.device)
@@ -79,6 +83,9 @@ class EncoderTrainingSummary:
     residual_state_rms_mean: tuple[float, ...] = ()
     base_residual_state_rms_mean: tuple[float, ...] = ()
     residual_dynamics_delta_rms_mean: tuple[float, ...] = ()
+    temporal_state_rms_mean: tuple[float, ...] = ()
+    variance_state_rms_mean: tuple[float, ...] = ()
+    covariance_state_rms_mean: tuple[float, ...] = ()
 
 
 @torch.no_grad()
@@ -106,7 +113,9 @@ def lateral_proxy_diagnostics(
             "norm_ratio": 0.0,
         }
     cosine = torch.sum(proxy_direction * direct_direction) / (proxy_norm * direct_norm)
-    relative_error = torch.linalg.vector_norm(proxy_direction - direct_direction) / direct_norm
+    relative_error = (
+        torch.linalg.vector_norm(proxy_direction - direct_direction) / direct_norm
+    )
     return {
         "valid": True,
         "cosine_alignment": float(cosine.clamp(-1.0, 1.0)),
@@ -158,12 +167,14 @@ def train_local_encoder(
     augmentation: str = "none",
     gradient_accumulation_steps: int = 1,
     audit_lateral_proxy: bool = False,
+    audit_residual_components: bool = False,
     residual_lateral_steps: int = 1,
     residual_lateral_step_size: float = 0.1,
     residual_lateral_rule: str = "dual_inhibitory",
     residual_lateral_include_diagonal: bool = True,
     residual_lateral_moment_normalization: str = "none",
     residual_lateral_coefficient: float = 0.5,
+    residual_lateral_signal_offset: int = 0,
 ) -> EncoderTrainingSummary:
     """Train a TeReL encoder and return the fidelity/compute audit record."""
     if epochs <= 0:
@@ -195,18 +206,24 @@ def train_local_encoder(
     residual_state_rms = [[] for _ in model.layers]
     base_residual_state_rms = [[] for _ in model.layers]
     residual_dynamics_delta_rms = [[] for _ in model.layers]
+    component_state_rms = {
+        name: [[] for _ in model.layers]
+        for name in ("temporal", "variance", "covariance")
+    }
     batches_per_epoch = math.ceil(len(dataset) / batch_size)
     stages = range(len(model.layers)) if training_mode == "greedy" else (None,)
     for active_layer in stages:
         for epoch in range(epochs):
             stage_offset = 0 if active_layer is None else active_layer * epochs
-            for batch_index, (features, boundaries) in enumerate(encoder_batches(
-                dataset,
-                batch_size=batch_size,
-                order_mode=order_mode,
-                seed=order_seed + stage_offset + epoch,
-                chunk_size=chunk_size,
-            )):
+            for batch_index, (features, boundaries) in enumerate(
+                encoder_batches(
+                    dataset,
+                    batch_size=batch_size,
+                    order_mode=order_mode,
+                    seed=order_seed + stage_offset + epoch,
+                    chunk_size=chunk_size,
+                )
+            ):
                 features = features.to(device, non_blocking=True)
                 boundaries = boundaries.to(device, non_blocking=True)
                 features = _augment(
@@ -214,8 +231,12 @@ def train_local_encoder(
                     mode=augmentation,
                     seed=order_seed + stage_offset * 100_000 + epoch * 10_000 + steps,
                 )
-                group_start = (batch_index // gradient_accumulation_steps) * gradient_accumulation_steps
-                group_stop = min(group_start + gradient_accumulation_steps, batches_per_epoch)
+                group_start = (
+                    batch_index // gradient_accumulation_steps
+                ) * gradient_accumulation_steps
+                group_stop = min(
+                    group_start + gradient_accumulation_steps, batches_per_epoch
+                )
                 group_size = group_stop - group_start
                 take_step = batch_index + 1 == group_stop
                 metrics = local_train_step(
@@ -232,6 +253,7 @@ def train_local_encoder(
                     optimizer_step=take_step,
                     loss_scale=1.0 / group_size,
                     audit_lateral_proxy=audit_lateral_proxy,
+                    audit_residual_components=audit_residual_components,
                     residual_lateral_steps=residual_lateral_steps,
                     residual_lateral_step_size=residual_lateral_step_size,
                     residual_lateral_rule=residual_lateral_rule,
@@ -240,6 +262,7 @@ def train_local_encoder(
                         residual_lateral_moment_normalization
                     ),
                     residual_lateral_coefficient=residual_lateral_coefficient,
+                    residual_lateral_signal_offset=residual_lateral_signal_offset,
                 )
                 for layer_index in range(len(model.layers)):
                     prefix = f"layer_{layer_index}/lateral_proxy_"
@@ -260,13 +283,21 @@ def train_local_encoder(
                         ("residual_dynamics_delta_rms", residual_dynamics_delta_rms),
                     ):
                         if residual_prefix + name in metrics:
-                            collection[layer_index].append(metrics[residual_prefix + name])
+                            collection[layer_index].append(
+                                metrics[residual_prefix + name]
+                            )
+                    for name, collection in component_state_rms.items():
+                        metric_name = residual_prefix + name + "_state_rms"
+                        if metric_name in metrics:
+                            collection[layer_index].append(metrics[metric_name])
                 steps += 1
                 examples += len(features)
                 loss_sum += metrics["loss"]
                 optimizer_steps += int(take_step)
     seconds = time.perf_counter() - start
-    peak_memory = torch.cuda.max_memory_allocated(device) if device.type == "cuda" else 0
+    peak_memory = (
+        torch.cuda.max_memory_allocated(device) if device.type == "cuda" else 0
+    )
     return EncoderTrainingSummary(
         epochs=int(epochs),
         steps=steps,
@@ -296,7 +327,9 @@ def train_local_encoder(
             )
             for state, old in zip(model.states, residual_lateral_before, strict=True)
         ),
-        parameter_numel=sum(parameter.numel() for parameter in model.encoder_parameters()),
+        parameter_numel=sum(
+            parameter.numel() for parameter in model.encoder_parameters()
+        ),
         dynamic_state_numel=sum(state.dynamic_state_numel() for state in model.states),
         causal_dynamic_state_numel=sum(
             state.causal_dynamic_state_numel() for state in model.states
@@ -332,6 +365,18 @@ def train_local_encoder(
             sum(values) / len(values) if values else 0.0
             for values in residual_dynamics_delta_rms
         ),
+        temporal_state_rms_mean=tuple(
+            sum(values) / len(values) if values else 0.0
+            for values in component_state_rms["temporal"]
+        ),
+        variance_state_rms_mean=tuple(
+            sum(values) / len(values) if values else 0.0
+            for values in component_state_rms["variance"]
+        ),
+        covariance_state_rms_mean=tuple(
+            sum(values) / len(values) if values else 0.0
+            for values in component_state_rms["covariance"]
+        ),
     )
 
 
@@ -350,12 +395,14 @@ def local_train_step(
     optimizer_step: bool = True,
     loss_scale: float = 1.0,
     audit_lateral_proxy: bool = False,
+    audit_residual_components: bool = False,
     residual_lateral_steps: int = 1,
     residual_lateral_step_size: float = 0.1,
     residual_lateral_rule: str = "dual_inhibitory",
     residual_lateral_include_diagonal: bool = True,
     residual_lateral_moment_normalization: str = "none",
     residual_lateral_coefficient: float = 0.5,
+    residual_lateral_signal_offset: int = 0,
 ) -> dict[str, float]:
     """Apply one optimizer step using independent per-layer TeReL losses."""
     model.train()
@@ -373,19 +420,24 @@ def local_train_step(
         raise ValueError(
             "residual-state TeReL requires identity or streaming normalization"
         )
-    if residual_mode and model.normalization == "streaming_norm":
-        if any(
+    if (
+        residual_mode
+        and model.normalization == "streaming_norm"
+        and any(
             parameter.requires_grad
             for normalization in model.normalizations
             for parameter in normalization.parameters()
-        ):
-            raise ValueError(
-                "residual-state TeReL requires fixed-affine streaming normalization"
-            )
+        )
+    ):
+        raise ValueError(
+            "residual-state TeReL requires fixed-affine streaming normalization"
+        )
     if residual_lateral_moment_normalization not in {"none", "features"}:
         raise ValueError(
             "residual_lateral_moment_normalization must be 'none' or 'features'"
         )
+    if residual_lateral_signal_offset not in {0, 1}:
+        raise ValueError("residual_lateral_signal_offset must be zero or one")
     layer_details = model.forward_local_details(x, stop_after=active_layer)
     losses = []
     layer_metrics = []
@@ -402,13 +454,29 @@ def local_train_step(
             boundaries=boundaries,
             detach=detach_previous,
         )
-        if covariance_mode not in {"proxy", "shifted_proxy", "direct", "residual_state"}:
+        if covariance_mode not in {
+            "proxy",
+            "shifted_proxy",
+            "direct",
+            "residual_state",
+        }:
             raise ValueError(f"Unsupported covariance_mode '{covariance_mode}'")
         if residual_mode:
             if residual_lateral_rule != "dual_inhibitory":
                 raise ValueError(
                     "residual-state TeReL requires the dual inhibitory rule"
                 )
+            lateral_reference = None
+            if residual_lateral_signal_offset == 1:
+                if z.shape[0] != 1:
+                    raise ValueError(
+                        "equal-offset residual TeReL requires batch size one"
+                    )
+                centered = z.detach() - state.mean.detach()
+                lateral_reference = torch.zeros_like(centered)
+                if bool(valid[0]):
+                    lateral_reference[0] = state.ensure_previous_centered()
+                state.ensure_previous_centered()
             _, activation_residual = regularized_target_residual(
                 z=z,
                 previous=previous,
@@ -418,6 +486,7 @@ def local_train_step(
                 pair_valid=valid,
                 coefficients=coefficients,
                 variance_target=variance_target,
+                lateral_reference=lateral_reference,
             )
             base_neuron_state = torch.autograd.grad(
                 z,
@@ -425,13 +494,53 @@ def local_train_step(
                 grad_outputs=activation_residual,
                 retain_graph=True,
             )[0].detach()
-            neuron_state = residual_lateral_dynamics(
-                base_state=base_neuron_state,
-                lateral=state.ensure_residual_lateral(),
-                coefficient=residual_lateral_coefficient,
-                steps=residual_lateral_steps,
-                step_size=residual_lateral_step_size,
-            )
+            component_states = {}
+            if audit_residual_components:
+                components = regularized_target_components(
+                    z=z,
+                    previous=previous,
+                    mean=state.mean,
+                    variance=state.variance,
+                    lateral=state.lateral,
+                    pair_valid=valid,
+                    coefficients=coefficients,
+                    variance_target=variance_target,
+                    lateral_reference=lateral_reference,
+                )
+                component_states = {
+                    name: torch.autograd.grad(
+                        z,
+                        preactivation,
+                        grad_outputs=component,
+                        retain_graph=True,
+                    )[0].detach()
+                    for name, component in components.items()
+                }
+            if residual_lateral_signal_offset == 0:
+                neuron_state = residual_lateral_dynamics(
+                    base_state=base_neuron_state,
+                    lateral=state.ensure_residual_lateral(),
+                    coefficient=residual_lateral_coefficient,
+                    steps=residual_lateral_steps,
+                    step_size=residual_lateral_step_size,
+                )
+            else:
+                if residual_lateral_steps != 1:
+                    raise ValueError(
+                        "equal-offset residual TeReL uses exactly one correction"
+                    )
+                previous_neuron_state = torch.zeros_like(base_neuron_state)
+                if bool(valid[0]):
+                    previous_neuron_state[0] = state.ensure_previous_neuron_state()
+                state.ensure_previous_neuron_state()
+                neuron_state = residual_lateral_offset_correction(
+                    base_state=base_neuron_state,
+                    previous_state=previous_neuron_state,
+                    lateral=state.ensure_residual_lateral(),
+                    coefficient=residual_lateral_coefficient,
+                    step_size=residual_lateral_step_size,
+                    pair_valid=valid,
+                )
             target = (preactivation.detach() - neuron_state).detach()
             loss = (
                 coefficients.similarity
@@ -450,10 +559,14 @@ def local_train_step(
                 detach_previous=True,
             )
             metrics["residual_state_rms"] = neuron_state.square().mean().sqrt()
-            metrics["base_residual_state_rms"] = base_neuron_state.square().mean().sqrt()
+            metrics["base_residual_state_rms"] = (
+                base_neuron_state.square().mean().sqrt()
+            )
             metrics["residual_dynamics_delta_rms"] = (
-                base_neuron_state - neuron_state
-            ).square().mean().sqrt()
+                (base_neuron_state - neuron_state).square().mean().sqrt()
+            )
+            for name, component_state in component_states.items():
+                metrics[name + "_state_rms"] = component_state.square().mean().sqrt()
             losses.append(loss)
             layer_metrics.append(metrics)
             state_updates.append((z, state, neuron_state))
@@ -496,9 +609,7 @@ def local_train_step(
             metrics.update(
                 {
                     "lateral_proxy_valid": float(diagnostics["valid"]),
-                    "lateral_proxy_cosine_alignment": diagnostics[
-                        "cosine_alignment"
-                    ],
+                    "lateral_proxy_cosine_alignment": diagnostics["cosine_alignment"],
                     "lateral_proxy_relative_error": diagnostics["relative_error"],
                     "lateral_proxy_norm_ratio": diagnostics["norm_ratio"],
                 }
@@ -528,9 +639,13 @@ def local_train_step(
                 include_diagonal=residual_lateral_include_diagonal,
                 moment_scale=moment_scale,
             )
+            if residual_lateral_signal_offset == 1:
+                state.update_previous_neuron_state(residual_lateral_values)
 
     result = {"loss": float(total.detach())}
-    metric_indices = range(len(layer_metrics)) if active_layer is None else (active_layer,)
+    metric_indices = (
+        range(len(layer_metrics)) if active_layer is None else (active_layer,)
+    )
     for index, metrics in zip(metric_indices, layer_metrics, strict=True):
         for name, value in metrics.items():
             result[f"layer_{index}/{name}"] = float(value)

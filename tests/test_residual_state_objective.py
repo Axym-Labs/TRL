@@ -26,10 +26,29 @@ def test_shifted_proxy_allocates_centered_predecessor_only_when_requested():
     assert state.causal_dynamic_state_numel() == 4 * 3 + 1
 
 
+def test_equal_offset_state_stores_two_detached_predecessor_signals():
+    """Dropping either delayed signal would make the offset-one rule incomplete."""
+    width = 3
+    state = TeReLState(width, statistics_momentum=0.9, lateral_momentum=0.99)
+    state.ensure_previous_centered()
+    stored = state.ensure_previous_neuron_state()
+
+    current = torch.tensor([[2.0, -1.0, 0.5]], requires_grad=True)
+    state.update_previous_neuron_state(current)
+
+    assert stored.shape == (width,)
+    assert torch.equal(stored, current.detach()[0])
+    assert stored.requires_grad is False
+    assert stored.grad_fn is None
+    assert state.causal_dynamic_state_numel() == 5 * width + 1
+
+
 def test_regularized_target_residual_reproduces_detached_activation_gradient():
     """Dropping a term, mask, or reduction must break target-gradient equivalence."""
     target_builder = getattr(objective, "regularized_target_residual", None)
-    assert callable(target_builder), "regularized target construction is not implemented"
+    assert callable(target_builder), (
+        "regularized target construction is not implemented"
+    )
 
     z = torch.tensor(
         [[2.0, -1.0], [1.0, 3.0], [4.0, 0.0]],
@@ -74,6 +93,33 @@ def test_regularized_target_residual_reproduces_detached_activation_gradient():
     assert torch.allclose(target, expected_target)
     assert torch.allclose(z.detach() - target, residual)
 
+    components = objective.regularized_target_components(
+        z=z,
+        previous=previous,
+        mean=mean,
+        variance=variance,
+        lateral=lateral,
+        pair_valid=pair_valid,
+        coefficients=coefficients,
+        variance_target=1.0,
+        lateral_reference=lateral_reference,
+    )
+    assert set(components) == {"temporal", "variance", "covariance"}
+    assert all(not value.requires_grad for value in components.values())
+    assert torch.allclose(sum(components.values()), expected_residual)
+    assert torch.allclose(
+        components["temporal"],
+        torch.tensor([[1.5, 1.5], [0.0, 0.0], [3.0, -1.5]], dtype=torch.float64),
+    )
+    assert torch.allclose(
+        components["variance"],
+        torch.tensor([[-0.375, 0.0], [0.0, 0.0], [-1.125, 0.0]], dtype=torch.float64),
+    )
+    assert torch.allclose(
+        components["covariance"],
+        torch.tensor([[-0.5, 0.5], [1.0, 0.25], [1.5, -0.25]], dtype=torch.float64),
+    )
+
     original, _ = objective.detached_terel_loss(
         z=z,
         previous=previous,
@@ -100,7 +146,9 @@ def test_regularized_target_residual_reproduces_detached_activation_gradient():
 def test_preactivation_residual_state_gives_the_exact_weight_outer_product():
     """Omitting the local activation derivative must break the synaptic factorization."""
     target_builder = getattr(objective, "regularized_target_residual", None)
-    assert callable(target_builder), "regularized target construction is not implemented"
+    assert callable(target_builder), (
+        "regularized target construction is not implemented"
+    )
 
     inputs = torch.tensor([[2.0, 1.0]], dtype=torch.float64)
     weights = torch.tensor(
@@ -162,7 +210,9 @@ def test_preactivation_residual_state_gives_the_exact_weight_outer_product():
 def test_residual_lateral_equilibrium_inhibits_a_correlated_state():
     """Using the wrong lateral sign must amplify rather than suppress coactivity."""
     equilibrium = getattr(objective, "residual_lateral_equilibrium", None)
-    assert callable(equilibrium), "residual-state lateral equilibrium is not implemented"
+    assert callable(equilibrium), (
+        "residual-state lateral equilibrium is not implemented"
+    )
 
     base_state = torch.tensor([[1.0, 1.0]], dtype=torch.float64)
     inhibitory = torch.ones(2, 2, dtype=torch.float64)
@@ -186,7 +236,9 @@ def test_local_residual_dynamics_converges_to_the_equilibrium_reference():
     """A local dynamics implementation must not silently solve a different system."""
     equilibrium = getattr(objective, "residual_lateral_equilibrium", None)
     dynamics = getattr(objective, "residual_lateral_dynamics", None)
-    assert callable(equilibrium), "residual-state lateral equilibrium is not implemented"
+    assert callable(equilibrium), (
+        "residual-state lateral equilibrium is not implemented"
+    )
     assert callable(dynamics), "local residual-state dynamics is not implemented"
 
     base_state = torch.tensor([[1.0, 1.0]], dtype=torch.float64)
@@ -221,6 +273,28 @@ def test_zero_residual_lateral_steps_is_the_uninhibited_boundary():
     )
 
     assert torch.equal(actual, base)
+
+
+def test_equal_offset_correction_reads_the_preceding_neuron_state():
+    """Using the current base state or ignoring a boundary must change this result."""
+    correction = getattr(objective, "residual_lateral_offset_correction", None)
+    assert callable(correction), "equal-offset residual correction is not implemented"
+
+    actual = correction(
+        base_state=torch.tensor([[1.0, 2.0], [5.0, 6.0]], dtype=torch.float64),
+        previous_state=torch.tensor([[3.0, 4.0], [7.0, 8.0]], dtype=torch.float64),
+        lateral=torch.tensor([[1.0, 0.0], [0.0, 2.0]], dtype=torch.float64),
+        coefficient=2.0,
+        step_size=0.1,
+        pair_valid=torch.tensor([True, False]),
+    )
+
+    assert torch.allclose(
+        actual,
+        torch.tensor([[0.4, 0.4], [5.0, 6.0]], dtype=torch.float64),
+        atol=1e-12,
+        rtol=1e-12,
+    )
 
 
 def test_residual_lateral_moment_uses_the_same_detached_neuron_states():

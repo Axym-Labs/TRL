@@ -5,7 +5,9 @@ from torch import nn
 class TeReLState(nn.Module):
     """Detached running state for one TeReL layer."""
 
-    def __init__(self, features: int, statistics_momentum: float, lateral_momentum: float):
+    def __init__(
+        self, features: int, statistics_momentum: float, lateral_momentum: float
+    ):
         super().__init__()
         if features <= 0:
             raise ValueError("features must be positive")
@@ -24,6 +26,7 @@ class TeReLState(nn.Module):
         self.register_buffer("residual_lateral", None)
         self.register_buffer("previous", torch.zeros(features))
         self.register_buffer("previous_centered", None)
+        self.register_buffer("previous_neuron_state", None)
         self.register_buffer("has_previous", torch.tensor(False))
 
     def dynamic_state_numel(self) -> int:
@@ -34,6 +37,8 @@ class TeReLState(nn.Module):
         total = sum(vector.numel() for vector in vectors) + self.has_previous.numel()
         if self.previous_centered is not None:
             total += self.previous_centered.numel()
+        if self.previous_neuron_state is not None:
+            total += self.previous_neuron_state.numel()
         return total
 
     def auxiliary_parameter_numel(self) -> int:
@@ -53,6 +58,23 @@ class TeReLState(nn.Module):
         if self.previous_centered is None:
             self.previous_centered = torch.zeros_like(self.previous)
         return self.previous_centered
+
+    @torch.no_grad()
+    def ensure_previous_neuron_state(self) -> torch.Tensor:
+        if self.previous_neuron_state is None:
+            self.previous_neuron_state = torch.zeros_like(self.previous)
+        return self.previous_neuron_state
+
+    @torch.no_grad()
+    def update_previous_neuron_state(self, neuron_state: torch.Tensor) -> None:
+        if neuron_state.ndim != 2 or neuron_state.shape[1] != self.mean.numel():
+            raise ValueError(
+                f"Expected neuron_state [batch, {self.mean.numel()}], "
+                f"got {tuple(neuron_state.shape)}"
+            )
+        if neuron_state.shape[0] == 0:
+            raise ValueError("Cannot store an empty neuron state")
+        self.ensure_previous_neuron_state().copy_(neuron_state.detach()[-1])
 
     @torch.no_grad()
     def update_residual_lateral(

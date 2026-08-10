@@ -25,18 +25,19 @@ def lateral_proxy_error_bound(
     ``A q_t - C u_t = (A-C)u_t + A(q_t-u_t)``.
     """
     actual = torch.linalg.vector_norm(lateral @ reference - target @ current)
-    bound = (
-        torch.linalg.matrix_norm(lateral - target, ord=2)
-        * torch.linalg.vector_norm(current)
-        + torch.linalg.matrix_norm(lateral, ord=2)
-        * torch.linalg.vector_norm(reference - current)
-    )
+    bound = torch.linalg.matrix_norm(
+        lateral - target, ord=2
+    ) * torch.linalg.vector_norm(current) + torch.linalg.matrix_norm(
+        lateral, ord=2
+    ) * torch.linalg.vector_norm(reference - current)
     return actual, bound
 
 
 def direct_offdiagonal_covariance_loss(z: torch.Tensor, *, mean: torch.Tensor):
     if z.ndim != 2:
-        raise ValueError(f"Expected z with shape [batch, features], got {tuple(z.shape)}")
+        raise ValueError(
+            f"Expected z with shape [batch, features], got {tuple(z.shape)}"
+        )
     centered = z - mean.detach()
     covariance = centered.T @ centered / z.shape[0]
     offdiagonal = covariance - torch.diag_embed(torch.diagonal(covariance))
@@ -52,7 +53,9 @@ def temporal_references(
 ):
     """Return the preceding activation and a validity mask for each sample."""
     if z.ndim != 2:
-        raise ValueError(f"Expected z with shape [batch, features], got {tuple(z.shape)}")
+        raise ValueError(
+            f"Expected z with shape [batch, features], got {tuple(z.shape)}"
+        )
     if boundaries.shape != (z.shape[0],):
         raise ValueError(
             f"Expected boundaries with shape {(z.shape[0],)}, got {tuple(boundaries.shape)}"
@@ -73,7 +76,7 @@ def temporal_references(
     return previous, valid
 
 
-def regularized_target_residual(
+def regularized_target_components(
     *,
     z: torch.Tensor,
     previous: torch.Tensor,
@@ -84,12 +87,14 @@ def regularized_target_residual(
     coefficients: LossCoefficients,
     variance_target: float,
     lateral_reference: torch.Tensor | None = None,
-):
-    """Construct the detached target whose residual gives the samplewise gradient."""
+) -> dict[str, torch.Tensor]:
+    """Return the three detached contributions to the regularized target residual."""
     if coefficients.similarity <= 0.0:
         raise ValueError("regularized target construction requires positive similarity")
     if z.ndim != 2:
-        raise ValueError(f"Expected z with shape [batch, features], got {tuple(z.shape)}")
+        raise ValueError(
+            f"Expected z with shape [batch, features], got {tuple(z.shape)}"
+        )
     if previous.shape != z.shape:
         raise ValueError(
             f"Expected previous with shape {tuple(z.shape)}, got {tuple(previous.shape)}"
@@ -114,22 +119,52 @@ def regularized_target_residual(
         )
 
     pair_count = int(pair_valid.sum())
-    pair_weight = torch.zeros(
-        z.shape[0], device=z.device, dtype=z.dtype
-    )
+    pair_weight = torch.zeros(z.shape[0], device=z.device, dtype=z.dtype)
     if pair_count:
         pair_weight[pair_valid] = z.shape[0] / pair_count
     variance_gate = F.relu(
         torch.as_tensor(variance_target, device=z.device, dtype=z.dtype) - variance
     )
-    residual = (
-        pair_weight[:, None] * (values - previous)
-        - (coefficients.variance / coefficients.similarity)
-        * variance_gate
-        * centered
-        + (coefficients.covariance / (2.0 * coefficients.similarity))
-        * F.linear(lateral_reference.detach(), lateral)
-    ).detach()
+    return {
+        "temporal": (pair_weight[:, None] * (values - previous)).detach(),
+        "variance": (
+            -(coefficients.variance / coefficients.similarity)
+            * variance_gate
+            * centered
+        ).detach(),
+        "covariance": (
+            (coefficients.covariance / (2.0 * coefficients.similarity))
+            * F.linear(lateral_reference.detach(), lateral)
+        ).detach(),
+    }
+
+
+def regularized_target_residual(
+    *,
+    z: torch.Tensor,
+    previous: torch.Tensor,
+    mean: torch.Tensor,
+    variance: torch.Tensor,
+    lateral: torch.Tensor,
+    pair_valid: torch.Tensor,
+    coefficients: LossCoefficients,
+    variance_target: float,
+    lateral_reference: torch.Tensor | None = None,
+):
+    """Construct the detached target whose residual gives the samplewise gradient."""
+    components = regularized_target_components(
+        z=z,
+        previous=previous,
+        mean=mean,
+        variance=variance,
+        lateral=lateral,
+        pair_valid=pair_valid,
+        coefficients=coefficients,
+        variance_target=variance_target,
+        lateral_reference=lateral_reference,
+    )
+    residual = sum(components.values()).detach()
+    values = z.detach()
     target = (values - residual).detach()
     return target, residual
 
@@ -161,9 +196,10 @@ def residual_lateral_equilibrium(
     """Solve the inhibitory residual-state dynamics exactly as a reference."""
     _validate_residual_lateral_inputs(base_state, lateral, coefficient)
     values = base_state.detach()
-    operator = torch.eye(
-        values.shape[1], device=values.device, dtype=values.dtype
-    ) + coefficient * lateral.detach()
+    operator = (
+        torch.eye(values.shape[1], device=values.device, dtype=values.dtype)
+        + coefficient * lateral.detach()
+    )
     return torch.linalg.solve(operator, values.T).T.detach()
 
 
@@ -188,6 +224,39 @@ def residual_lateral_dynamics(
         inhibition = F.linear(state, lateral)
         state = state + step_size * (values - state - coefficient * inhibition)
     return state.detach()
+
+
+def residual_lateral_offset_correction(
+    *,
+    base_state: torch.Tensor,
+    previous_state: torch.Tensor,
+    lateral: torch.Tensor,
+    coefficient: float,
+    step_size: float,
+    pair_valid: torch.Tensor,
+) -> torch.Tensor:
+    """Apply one inhibitory correction driven by the preceding neuron state."""
+    _validate_residual_lateral_inputs(base_state, lateral, coefficient)
+    if previous_state.shape != base_state.shape:
+        raise ValueError(
+            f"Expected previous_state with shape {tuple(base_state.shape)}, "
+            f"got {tuple(previous_state.shape)}"
+        )
+    if pair_valid.shape != (base_state.shape[0],):
+        raise ValueError(
+            f"Expected pair_valid with shape {(base_state.shape[0],)}, "
+            f"got {tuple(pair_valid.shape)}"
+        )
+    if pair_valid.dtype is not torch.bool:
+        raise TypeError("pair_valid must be a boolean tensor")
+    if step_size <= 0.0:
+        raise ValueError("residual lateral correction step size must be positive")
+    inhibition = F.linear(previous_state.detach(), lateral.detach())
+    correction = step_size * coefficient * inhibition
+    correction = torch.where(
+        pair_valid[:, None], correction, torch.zeros_like(correction)
+    )
+    return (base_state.detach() - correction).detach()
 
 
 def residual_lateral_moment(neuron_state: torch.Tensor) -> torch.Tensor:
@@ -223,7 +292,9 @@ def terel_loss(
     distinguishes temporally local TeReL from the undetached batched variant.
     """
     if z.ndim != 2:
-        raise ValueError(f"Expected z with shape [batch, features], got {tuple(z.shape)}")
+        raise ValueError(
+            f"Expected z with shape [batch, features], got {tuple(z.shape)}"
+        )
     if pair_valid.shape != (z.shape[0],):
         raise ValueError(
             f"Expected pair_valid with shape {(z.shape[0],)}, got {tuple(pair_valid.shape)}"
@@ -242,7 +313,9 @@ def terel_loss(
         similarity_loss = z.sum() * 0.0
 
     centered = z - mean
-    variance_gate = F.relu(torch.as_tensor(variance_target, device=z.device, dtype=z.dtype) - variance)
+    variance_gate = F.relu(
+        torch.as_tensor(variance_target, device=z.device, dtype=z.dtype) - variance
+    )
     variance_loss = -(variance_gate * centered.square()).mean()
 
     if lateral_reference is None:

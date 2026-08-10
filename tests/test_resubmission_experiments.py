@@ -50,6 +50,41 @@ def test_residual_operation_proxy_counts_both_dense_operators():
     assert four_pass_proxy["same_layer_pairwise_mac_proxy"] == 7 * 10 * (3**2 + 2**2)
 
 
+def test_equal_offset_experiment_accounts_for_both_delayed_vectors():
+    """An equal-offset run must expose its larger causal state rather than hiding it."""
+    result = run_representation_experiment(
+        splits=_toy_splits(),
+        dataset_name="toy",
+        num_classes=2,
+        seed=101,
+        encoder=EncoderExperimentConfig(
+            method="terel_residual",
+            hidden_dims=(4, 2),
+            activation="identity",
+            epochs=1,
+            batch_size=1,
+            order_mode="chronological",
+            optimizer="plain_sgd",
+            learning_rate=0.001,
+            statistics_momentum=0.9,
+            lateral_momentum=0.9,
+            residual_lateral_coefficient=1.0,
+            residual_lateral_steps=1,
+            residual_lateral_signal_offset=1,
+        ),
+        probe=_probe_config(),
+        evaluation_split="validation",
+        device=torch.device("cpu"),
+    )
+
+    widths = 4 + 2
+    flags = 2
+    assert result["resource_accounting"]["causal_dynamic_state_bytes"] == (
+        5 * widths * torch.tensor(0.0).element_size() + flags
+    )
+    assert result["encoder_config"]["residual_lateral_signal_offset"] == 1
+
+
 def test_adam_component_ablation_accepts_explicit_betas():
     parameter = torch.nn.Parameter(torch.tensor([1.0]))
     optimizer = experiments._optimizer(
@@ -64,6 +99,8 @@ def test_adam_component_ablation_accepts_explicit_betas():
 
     assert optimizer.param_groups[0]["betas"] == (0.0, 0.99)
     assert optimizer.param_groups[0]["eps"] == 1e-6
+
+
 from terel.resubmission.provenance import TestGateError
 
 
@@ -208,6 +245,39 @@ def test_random_encoder_experiment_has_matched_probe_and_serializable_audit():
     assert result["class_structure_diagnostics"]["nearest_centroid_accuracy"] >= 0.5
 
 
+def test_representation_probe_excludes_unknown_labels_without_dropping_encoder_rows():
+    """Using -1 labels in the probe or dropping their encoder observations is invalid."""
+    splits = _toy_splits()
+    splits.train.labels[1] = -1
+    splits.train.labels[4] = -1
+    splits.validation.features = torch.cat(
+        (splits.validation.features[:1], splits.validation.features), dim=0
+    )
+    splits.validation.labels = torch.tensor([-1, 0, 1])
+    splits.validation.boundaries = torch.tensor([True, False, False])
+
+    result = run_representation_experiment(
+        splits=splits,
+        dataset_name="toy-masked-labels",
+        num_classes=2,
+        seed=101,
+        encoder=EncoderExperimentConfig(
+            method="random",
+            hidden_dims=(4, 2),
+            epochs=1,
+            batch_size=3,
+            order_mode="chronological",
+        ),
+        probe=_probe_config(),
+        evaluation_split="validation",
+        device=torch.device("cpu"),
+    )
+
+    assert result["probe_training"]["examples"] == _probe_config().epochs * 4
+    assert result["resource_accounting"]["encoder_batch_size"] == 3
+    assert result["metrics"]["support"] == 2
+
+
 def test_calibrated_random_encoder_serializes_normalization_separately():
     result = run_representation_experiment(
         splits=_toy_splits(),
@@ -258,11 +328,25 @@ def test_corrected_terel_experiment_records_all_layer_updates():
         device=torch.device("cpu"),
     )
 
-    assert all(delta > 0.0 for delta in result["encoder_training"]["layer_parameter_delta_l2"])
-    assert all(delta > 0.0 for delta in result["encoder_training"]["layer_lateral_delta_l2"])
+    assert all(
+        delta > 0.0 for delta in result["encoder_training"]["layer_parameter_delta_l2"]
+    )
+    assert all(
+        delta > 0.0 for delta in result["encoder_training"]["layer_lateral_delta_l2"]
+    )
     assert result["encoder_training"]["examples"] == 12
-    assert result["resource_accounting"]["operation_proxy"]["linear_forward_backward_mac_proxy"] > 0
-    assert result["resource_accounting"]["operation_proxy"]["same_layer_pairwise_mac_proxy"] > 0
+    assert (
+        result["resource_accounting"]["operation_proxy"][
+            "linear_forward_backward_mac_proxy"
+        ]
+        > 0
+    )
+    assert (
+        result["resource_accounting"]["operation_proxy"][
+            "same_layer_pairwise_mac_proxy"
+        ]
+        > 0
+    )
     assert "temporal_slowness" in result["representation_diagnostics"]
 
 
@@ -291,6 +375,7 @@ def test_residual_state_experiment_runs_through_the_cpu_validation_path():
             residual_lateral_step_size=0.1,
             residual_lateral_rule="dual_inhibitory",
             residual_lateral_coefficient=2.0,
+            audit_residual_components=True,
         ),
         probe=_probe_config(),
         evaluation_split="validation",
@@ -307,17 +392,26 @@ def test_residual_state_experiment_runs_through_the_cpu_validation_path():
     assert result["encoder_config"]["residual_lateral_steps"] == 2
     assert result["encoder_config"]["normalization_affine"] is False
     assert result["encoder_config"]["residual_lateral_rule"] == "dual_inhibitory"
-    assert all(delta > 0.0 for delta in result["encoder_training"]["layer_parameter_delta_l2"])
-    assert all(delta > 0.0 for delta in result["encoder_training"]["layer_lateral_delta_l2"])
     assert all(
-        delta > 0.0
-        for delta in result["encoder_training"]["residual_lateral_delta_l2"]
+        delta > 0.0 for delta in result["encoder_training"]["layer_parameter_delta_l2"]
     )
-    assert all(value > 0.0 for value in result["encoder_training"]["residual_state_rms_mean"])
+    assert all(
+        delta > 0.0 for delta in result["encoder_training"]["layer_lateral_delta_l2"]
+    )
+    assert all(
+        delta > 0.0 for delta in result["encoder_training"]["residual_lateral_delta_l2"]
+    )
+    assert all(
+        value > 0.0 for value in result["encoder_training"]["residual_state_rms_mean"]
+    )
     assert all(
         value >= 0.0
         for value in result["encoder_training"]["residual_dynamics_delta_rms_mean"]
     )
+    for term in ("temporal", "variance", "covariance"):
+        values = result["encoder_training"][f"{term}_state_rms_mean"]
+        assert len(values) == 2
+        assert all(value >= 0.0 for value in values)
     assert result["resource_accounting"]["encoder_batch_size"] == 1
 
 
@@ -349,7 +443,9 @@ def test_greedy_training_budget_is_recorded_as_epochs_per_layer():
     assert result["encoder_training"]["training_mode"] == "greedy"
     assert result["encoder_training"]["epochs_per_layer"] == 2
     assert result["encoder_training"]["examples"] == 2 * 2 * 6
-    assert all(delta > 0.0 for delta in result["encoder_training"]["layer_parameter_delta_l2"])
+    assert all(
+        delta > 0.0 for delta in result["encoder_training"]["layer_parameter_delta_l2"]
+    )
     proxy = result["resource_accounting"]["operation_proxy"]
     assert proxy["linear_forward_backward_mac_proxy"] == 672
     assert proxy["same_layer_pairwise_mac_proxy"] == 480

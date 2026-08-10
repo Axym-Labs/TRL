@@ -80,8 +80,9 @@ analysis           fc98d9073064ae78e7e8bd93be34b5484620d7d4735c29ffdd9cfc8af20ac
 
 The package contains the canonical samplewise records and complete executed
 bundles for the current scientific comparators. It excludes discarded
-configuration bundles, partial ledgers, old figures, development analyses, and
-natural-stream premise tests.
+configuration bundles, partial ledgers, old figures, and unreported development
+analyses.  The compact sensor-development record and neuron-state figure data
+reported by the manuscript are stored with the paper source.
 
 ```bash
 uv run python -m terel.resubmission.package_supplement \

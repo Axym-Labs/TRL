@@ -1,0 +1,30 @@
+{
+  "protocol_version": "equal-offset-canonical-terel-v1",
+  "selection_split": "validation",
+  "seed": 101,
+  "baseline": {
+    "candidate": "canonical same-sample inhibition",
+    "residual_lateral_coefficient": 1000.0,
+    "status": "finite",
+    "accuracy": 0.9591,
+    "effective_rank": 147.0
+  },
+  "equal_offset_candidates": [
+    {
+      "candidate": "equal-offset-kappa1000",
+      "residual_lateral_coefficient": 1000.0,
+      "status": "nonfinite_representation"
+    },
+    {
+      "candidate": "equal-offset-kappa1",
+      "residual_lateral_coefficient": 1.0,
+      "status": "nonfinite_representation"
+    },
+    {
+      "candidate": "equal-offset-kappa01",
+      "residual_lateral_coefficient": 0.1,
+      "status": "nonfinite_representation"
+    }
+  ],
+  "decision": "reject equal-offset recurrence; retain canonical same-sample one-pass inhibition"
+}

@@ -66,6 +66,7 @@ class EncoderExperimentConfig:
     incsfa_output_dim: int | None = None
     incsfa_learning_rate: float = 0.001
     audit_lateral_proxy: bool = False
+    audit_residual_components: bool = False
     batch_norm_calibration_passes: int = 0
     residual_lateral_steps: int = 1
     residual_lateral_step_size: float = 0.1
@@ -73,6 +74,7 @@ class EncoderExperimentConfig:
     residual_lateral_include_diagonal: bool = True
     residual_lateral_moment_normalization: str = "none"
     residual_lateral_coefficient: float = 0.5
+    residual_lateral_signal_offset: int = 0
 
 
 @dataclass(frozen=True)
@@ -159,10 +161,17 @@ def _terel_resource_bytes(model):
     for state in model.states:
         causal += sum(
             _tensor_bytes(value)
-            for value in (state.mean, state.variance, state.previous, state.has_previous)
+            for value in (
+                state.mean,
+                state.variance,
+                state.previous,
+                state.has_previous,
+            )
         )
         if state.previous_centered is not None:
             causal += _tensor_bytes(state.previous_centered)
+        if state.previous_neuron_state is not None:
+            causal += _tensor_bytes(state.previous_neuron_state)
         auxiliary += _tensor_bytes(state.lateral)
         if state.residual_lateral is not None:
             auxiliary += _tensor_bytes(state.residual_lateral)
@@ -235,17 +244,16 @@ def _operation_proxy(
             )
         elif method == "local_supcon":
             pairwise = (
-                2
-                * int(training.get("steps", 0))
-                * batch_size**2
-                * sum(hidden_dims)
+                2 * int(training.get("steps", 0)) * batch_size**2 * sum(hidden_dims)
             )
         else:
             pairwise = 0
         return {
             "training_examples": examples,
             "linear_forward_backward_mac_proxy": int(linear),
-            "same_layer_pairwise_mac_proxy": int(pairwise) if pairwise is not None else None,
+            "same_layer_pairwise_mac_proxy": int(pairwise)
+            if pairwise is not None
+            else None,
         }
     return {
         "training_examples": examples,
@@ -280,7 +288,9 @@ def _supervised_representations(
         representations = model.representations(
             dataset.features[start : start + batch_size].to(device)
         )
-        selected = torch.cat(representations, dim=1) if use_all_layers else representations[-1]
+        selected = (
+            torch.cat(representations, dim=1) if use_all_layers else representations[-1]
+        )
         batches.append(selected.detach().cpu())
     return torch.cat(batches)
 
@@ -300,6 +310,13 @@ def _sfa_order(dataset, config: EncoderExperimentConfig, seed: int):
         boundaries[0] = True
         return order, boundaries
     raise ValueError(f"Unknown SFA order mode: {config.order_mode}")
+
+
+def _probe_view(representations, dataset):
+    labeled = dataset.labels >= 0
+    if not bool(labeled.any()):
+        raise ValueError("linear-probe split contains no known labels")
+    return representations[labeled], dataset.labels[labeled]
 
 
 def run_representation_experiment(
@@ -331,7 +348,9 @@ def run_representation_experiment(
 
     set_reproducible_seed(seed)
     train_dataset = splits.train
-    evaluation_dataset = splits.validation if evaluation_split == "validation" else splits.test
+    evaluation_dataset = (
+        splits.validation if evaluation_split == "validation" else splits.test
+    )
     input_dim = train_dataset.features.shape[1]
     method = encoder.method
     encoder_training = None
@@ -362,7 +381,9 @@ def run_representation_experiment(
             lateral_momentum=encoder.lateral_momentum,
         ).to(device)
         if encoder.batch_norm_calibration_passes and method != "random":
-            raise ValueError("BatchNorm calibration is only defined for random encoders")
+            raise ValueError(
+                "BatchNorm calibration is only defined for random encoders"
+            )
         if method != "random":
             optimizer = _optimizer(
                 encoder.optimizer,
@@ -410,6 +431,7 @@ def run_representation_experiment(
                     augmentation=encoder.augmentation,
                     gradient_accumulation_steps=encoder.gradient_accumulation_steps,
                     audit_lateral_proxy=encoder.audit_lateral_proxy,
+                    audit_residual_components=encoder.audit_residual_components,
                     residual_lateral_steps=encoder.residual_lateral_steps,
                     residual_lateral_step_size=encoder.residual_lateral_step_size,
                     residual_lateral_rule=encoder.residual_lateral_rule,
@@ -420,6 +442,9 @@ def run_representation_experiment(
                         encoder.residual_lateral_moment_normalization
                     ),
                     residual_lateral_coefficient=encoder.residual_lateral_coefficient,
+                    residual_lateral_signal_offset=(
+                        encoder.residual_lateral_signal_offset
+                    ),
                 )
         elif encoder.batch_norm_calibration_passes:
             normalization_calibration = calibrate_batch_normalization(
@@ -443,9 +468,15 @@ def run_representation_experiment(
             device=device,
             use_all_layers=probe.readout == "all",
         )
+        train_probe_representations, train_probe_labels = _probe_view(
+            train_representations, train_dataset
+        )
+        evaluation_probe_representations, evaluation_probe_labels = _probe_view(
+            evaluation_representations, evaluation_dataset
+        )
         linear_probe, probe_training = fit_linear_probe(
-            train_representations,
-            train_dataset.labels,
+            train_probe_representations,
+            train_probe_labels,
             num_classes=num_classes,
             seed=seed + 10_000,
             epochs=probe.epochs,
@@ -456,7 +487,7 @@ def run_representation_experiment(
             device=device,
         )
         with torch.no_grad():
-            logits = linear_probe(evaluation_representations.to(device)).cpu()
+            logits = linear_probe(evaluation_probe_representations.to(device)).cpu()
         dynamic_state_bytes = _buffer_bytes(model) if method.startswith("terel_") else 0
         if method.startswith("terel_"):
             causal_dynamic_state_bytes, auxiliary_parameter_bytes = (
@@ -505,9 +536,15 @@ def run_representation_experiment(
             device=device,
             use_all_layers=probe.readout == "all",
         )
+        train_probe_representations, train_probe_labels = _probe_view(
+            train_representations, train_dataset
+        )
+        evaluation_probe_representations, evaluation_probe_labels = _probe_view(
+            evaluation_representations, evaluation_dataset
+        )
         linear_probe, probe_training = fit_linear_probe(
-            train_representations,
-            train_dataset.labels,
+            train_probe_representations,
+            train_probe_labels,
             num_classes=num_classes,
             seed=seed + 10_000,
             epochs=probe.epochs,
@@ -518,7 +555,7 @@ def run_representation_experiment(
             device=device,
         )
         with torch.no_grad():
-            logits = linear_probe(evaluation_representations.to(device)).cpu()
+            logits = linear_probe(evaluation_probe_representations.to(device)).cpu()
         dynamic_state_bytes = 0
 
     elif method == "sfa":
@@ -541,9 +578,15 @@ def run_representation_experiment(
         evaluation_representations = torch.from_numpy(
             model.transform(evaluation_dataset.features.detach().cpu().numpy())
         ).to(torch.float32)
+        train_probe_representations, train_probe_labels = _probe_view(
+            train_representations, train_dataset
+        )
+        evaluation_probe_representations, evaluation_probe_labels = _probe_view(
+            evaluation_representations, evaluation_dataset
+        )
         linear_probe, probe_training = fit_linear_probe(
-            train_representations,
-            train_dataset.labels,
+            train_probe_representations,
+            train_probe_labels,
             num_classes=num_classes,
             seed=seed + 10_000,
             epochs=probe.epochs,
@@ -554,14 +597,16 @@ def run_representation_experiment(
             device=device,
         )
         with torch.no_grad():
-            logits = linear_probe(evaluation_representations.to(device)).cpu()
+            logits = linear_probe(evaluation_probe_representations.to(device)).cpu()
         optimizer = None
         dynamic_state_bytes = 0
     elif method == "incsfa":
         order, boundaries = _sfa_order(train_dataset, encoder, seed)
         ordered = train_dataset.features[torch.as_tensor(order)].detach().cpu().numpy()
         whitening_dim = encoder.incsfa_whitening_dim or input_dim
-        output_dim = encoder.incsfa_output_dim or min(encoder.hidden_dims[-1], whitening_dim)
+        output_dim = encoder.incsfa_output_dim or min(
+            encoder.hidden_dims[-1], whitening_dim
+        )
         model = IncrementalLinearSFA(
             input_dim=input_dim,
             whitening_dim=whitening_dim,
@@ -584,9 +629,15 @@ def run_representation_experiment(
         evaluation_representations = torch.from_numpy(
             model.transform(evaluation_dataset.features.detach().cpu().numpy())
         ).to(torch.float32)
+        train_probe_representations, train_probe_labels = _probe_view(
+            train_representations, train_dataset
+        )
+        evaluation_probe_representations, evaluation_probe_labels = _probe_view(
+            evaluation_representations, evaluation_dataset
+        )
         linear_probe, probe_training = fit_linear_probe(
-            train_representations,
-            train_dataset.labels,
+            train_probe_representations,
+            train_probe_labels,
             num_classes=num_classes,
             seed=seed + 10_000,
             epochs=probe.epochs,
@@ -597,7 +648,7 @@ def run_representation_experiment(
             device=device,
         )
         with torch.no_grad():
-            logits = linear_probe(evaluation_representations.to(device)).cpu()
+            logits = linear_probe(evaluation_probe_representations.to(device)).cpu()
         optimizer = None
         dynamic_state_bytes = model.dynamic_state_numel() * 8
     else:
@@ -624,7 +675,9 @@ def run_representation_experiment(
         "dynamic_state_bytes": int(dynamic_state_bytes),
         "causal_dynamic_state_bytes": int(causal_dynamic_state_bytes),
         "auxiliary_parameter_bytes": int(auxiliary_parameter_bytes),
-        "optimizer_state_bytes": int(_optimizer_bytes(optimizer)) if optimizer is not None else 0,
+        "optimizer_state_bytes": int(_optimizer_bytes(optimizer))
+        if optimizer is not None
+        else 0,
         "encoder_batch_size": int(encoder.batch_size),
         "probe_batch_size": int(probe.batch_size),
         "probe_input_dim": int(evaluation_representations.shape[1]),
@@ -663,14 +716,18 @@ def run_representation_experiment(
         "probe_config": asdict(probe),
         "encoder_training": serialized_training,
         "normalization_calibration": serialized_calibration,
-        "probe_training": asdict(probe_training) if probe_training is not None else None,
-        "metrics": classification_metrics(logits, evaluation_dataset.labels, num_classes=num_classes),
+        "probe_training": asdict(probe_training)
+        if probe_training is not None
+        else None,
+        "metrics": classification_metrics(
+            logits, evaluation_probe_labels, num_classes=num_classes
+        ),
         "representation_diagnostics": representation_diagnostics(
             evaluation_representations, evaluation_dataset.boundaries
         ),
         "class_structure_diagnostics": class_structure_diagnostics(
-            evaluation_representations,
-            evaluation_dataset.labels,
+            evaluation_probe_representations,
+            evaluation_probe_labels,
             num_classes=num_classes,
         ),
         "resource_accounting": resource_accounting,

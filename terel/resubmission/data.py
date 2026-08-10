@@ -1,17 +1,29 @@
-from dataclasses import dataclass
 import hashlib
-from pathlib import Path
 import re
 import urllib.request
 import zipfile
+from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import torch
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 
-
 PAMAP2_ACTIVITY_IDS = (1, 2, 3, 4, 5, 6, 7, 12, 13, 16, 17, 24)
+EXTRASENSORY_ACTIVITY_COLUMNS = (
+    "label:LYING_DOWN",
+    "label:SITTING",
+    "label:OR_standing",
+    "label:FIX_walking",
+    "label:FIX_running",
+    "label:BICYCLING",
+)
+WISDM_ACTIVITY_CODES = tuple("ABCDEFGHIJKLMOPQRS")
+WISDM_TRAIN_SUBJECTS = tuple(range(1600, 1631))
+WISDM_VALIDATION_SUBJECTS = tuple(range(1631, 1641))
+WISDM_HELDOUT_SUBJECTS = tuple(range(1641, 1651))
 
 
 @dataclass(frozen=True)
@@ -36,7 +48,9 @@ class _EncoderView(Dataset):
 class TemporalTensorDataset(Dataset):
     """Temporal samples with a label-free view for encoder pretraining."""
 
-    def __init__(self, *, features: torch.Tensor, labels: torch.Tensor, boundaries: torch.Tensor):
+    def __init__(
+        self, *, features: torch.Tensor, labels: torch.Tensor, boundaries: torch.Tensor
+    ):
         if len(features) != len(labels) or len(features) != len(boundaries):
             raise ValueError("features, labels, and boundaries must have equal length")
         if boundaries.dtype is not torch.bool:
@@ -106,8 +120,8 @@ def mnist_protocol_from_tensors(
             "dataset": "MNIST",
             "split_seed": int(seed),
             "validation_source": "official_train",
-            "source_train_rows": int(len(train_labels)),
-            "source_test_rows": int(len(test_labels)),
+            "source_train_rows": len(train_labels),
+            "source_test_rows": len(test_labels),
         },
     )
 
@@ -116,7 +130,9 @@ def split_pamap2_subjects(subject_ids):
     subject_ids = tuple(sorted(int(subject_id) for subject_id in subject_ids))
     required = tuple(range(1, 10))
     if subject_ids != required:
-        raise ValueError(f"PAMAP2 protocol requires subjects {required}, got {subject_ids}")
+        raise ValueError(
+            f"PAMAP2 protocol requires subjects {required}, got {subject_ids}"
+        )
     return tuple(range(1, 7)), (7,), (8,)
 
 
@@ -124,7 +140,9 @@ def prepare_pamap2_subject(raw: np.ndarray, *, stride: int):
     """Filter/downsample one subject while retaining discontinuity boundaries."""
     raw = np.asarray(raw)
     if raw.ndim != 2 or raw.shape[1] < 3:
-        raise ValueError("PAMAP2 rows must contain timestamp, activity, and sensor columns")
+        raise ValueError(
+            "PAMAP2 rows must contain timestamp, activity, and sensor columns"
+        )
     if stride <= 0:
         raise ValueError("stride must be positive")
 
@@ -139,8 +157,12 @@ def prepare_pamap2_subject(raw: np.ndarray, *, stride: int):
         )
 
     features = raw[selected, 2:].astype(np.float32, copy=False)
-    label_lookup = {activity_id: index for index, activity_id in enumerate(PAMAP2_ACTIVITY_IDS)}
-    labels = np.asarray([label_lookup[int(value)] for value in activity[selected]], dtype=np.int64)
+    label_lookup = {
+        activity_id: index for index, activity_id in enumerate(PAMAP2_ACTIVITY_IDS)
+    }
+    labels = np.asarray(
+        [label_lookup[int(value)] for value in activity[selected]], dtype=np.int64
+    )
     boundaries = np.zeros(len(selected), dtype=bool)
     boundaries[0] = True
     boundaries[1:] = np.diff(selected) > stride
@@ -160,7 +182,9 @@ def fit_standardizer(features: np.ndarray):
     mean = np.nanmean(features, axis=0).astype(np.float32)
     mean = np.where(np.isfinite(mean), mean, 0.0).astype(np.float32)
     scale = np.nanstd(features, axis=0).astype(np.float32)
-    scale = np.where(np.isfinite(scale) & (scale >= 1e-6), scale, 1.0).astype(np.float32)
+    scale = np.where(np.isfinite(scale) & (scale >= 1e-6), scale, 1.0).astype(
+        np.float32
+    )
     return mean, scale
 
 
@@ -203,7 +227,9 @@ def _pamap2_protocol_root(root: Path, *, allow_download: bool):
                 raise ValueError(f"Unsafe path in PAMAP2 archive: {member.filename}")
         bundle.extractall(root)
     if not candidates[0].is_dir():
-        raise FileNotFoundError("Downloaded PAMAP2 archive did not contain PAMAP2_Dataset/Protocol")
+        raise FileNotFoundError(
+            "Downloaded PAMAP2 archive did not contain PAMAP2_Dataset/Protocol"
+        )
     return candidates[0]
 
 
@@ -234,12 +260,16 @@ def _concatenate_prepared_subjects(prepared, subject_ids):
     )
 
 
-def load_pamap2_protocol(root, *, stride: int = 10, allow_download: bool = True) -> DatasetSplits:
+def load_pamap2_protocol(
+    root, *, stride: int = 10, allow_download: bool = True
+) -> DatasetSplits:
     """Load the frozen subject-disjoint PAMAP2 protocol without label leakage."""
     protocol_root = _pamap2_protocol_root(Path(root), allow_download=allow_download)
     files = sorted(protocol_root.glob("subject*.dat"))
     by_subject = {_pamap2_subject_id(path): path for path in files}
-    train_subjects, validation_subjects, test_subjects = split_pamap2_subjects(by_subject)
+    train_subjects, validation_subjects, test_subjects = split_pamap2_subjects(
+        by_subject
+    )
 
     prepared = {}
     for subject_id, path in by_subject.items():
@@ -254,7 +284,9 @@ def load_pamap2_protocol(root, *, stride: int = 10, allow_download: bool = True)
     def dataset(arrays):
         features, labels, boundaries = arrays
         return TemporalTensorDataset(
-            features=torch.from_numpy(apply_standardizer(features, mean, scale)).to(torch.float32),
+            features=torch.from_numpy(apply_standardizer(features, mean, scale)).to(
+                torch.float32
+            ),
             labels=torch.from_numpy(labels).to(torch.long),
             boundaries=torch.from_numpy(boundaries).to(torch.bool),
         )
@@ -309,6 +341,300 @@ def load_mnist_protocol(
     )
 
 
+def _extrasensory_fold_subjects(folds_root: Path, fold: int) -> tuple[str, ...]:
+    subjects = []
+    for device in ("android", "iphone"):
+        path = folds_root / f"fold_{fold}_test_{device}_uuids.txt"
+        subjects.extend(
+            line.strip() for line in path.read_text().splitlines() if line.strip()
+        )
+    return tuple(sorted(subjects))
+
+
+def _prepare_extrasensory_subject(
+    path: Path,
+    *,
+    feature_columns: tuple[str, ...],
+    gap_seconds: int,
+):
+    frame = pd.read_csv(
+        path,
+        usecols=("timestamp", *feature_columns, *EXTRASENSORY_ACTIVITY_COLUMNS),
+    ).sort_values("timestamp")
+    complete = np.isfinite(
+        frame.loc[:, feature_columns].to_numpy(dtype=np.float32)
+    ).all(axis=1)
+    frame = frame.loc[complete]
+    features = frame.loc[:, feature_columns].to_numpy(dtype=np.float32)
+    timestamps = frame["timestamp"].to_numpy(dtype=np.int64)
+    boundaries = np.zeros(len(frame), dtype=bool)
+    if len(boundaries):
+        boundaries[0] = True
+        boundaries[1:] = np.diff(timestamps) > gap_seconds
+
+    activities = frame.loc[:, EXTRASENSORY_ACTIVITY_COLUMNS].fillna(0.0).to_numpy()
+    positive_count = (activities == 1.0).sum(axis=1)
+    labels = np.full(len(frame), -1, dtype=np.int64)
+    uniquely_labeled = positive_count == 1
+    positive_index = activities[uniquely_labeled].argmax(axis=1)
+    # Lying, sitting, standing, and aggregate movement form four exclusive classes.
+    class_lookup = np.asarray((0, 1, 2, 3, 3, 3), dtype=np.int64)
+    labels[uniquely_labeled] = class_lookup[positive_index]
+    return features, labels, boundaries
+
+
+def load_extrasensory_development_protocol(
+    root,
+    *,
+    folds_root,
+    gap_seconds: int = 90,
+) -> DatasetSplits:
+    """Load fold-disjoint ExtraSensory development streams without held-out access."""
+    root = Path(root)
+    folds_root = Path(folds_root)
+    if gap_seconds <= 0:
+        raise ValueError("gap_seconds must be positive")
+    files = {
+        path.name.removesuffix(".features_labels.csv.gz"): path
+        for path in root.glob("*.features_labels.csv.gz")
+    }
+    heldout_subjects = _extrasensory_fold_subjects(folds_root, 0)
+    validation_subjects = _extrasensory_fold_subjects(folds_root, 1)
+    if set(heldout_subjects) & set(validation_subjects):
+        raise ValueError("ExtraSensory validation and held-out folds overlap")
+    train_subjects = tuple(
+        sorted(set(files) - set(heldout_subjects) - set(validation_subjects))
+    )
+    if not train_subjects or not validation_subjects:
+        raise ValueError(
+            "ExtraSensory development protocol has an empty participant split"
+        )
+    missing = (set(train_subjects) | set(validation_subjects)) - set(files)
+    if missing:
+        raise FileNotFoundError(
+            f"Missing ExtraSensory participant files: {sorted(missing)}"
+        )
+
+    header = pd.read_csv(files[train_subjects[0]], nrows=0)
+    feature_columns = tuple(
+        column for column in header if column.startswith("raw_acc:")
+    )
+    if not feature_columns:
+        raise ValueError("ExtraSensory files contain no raw-accelerometer features")
+
+    records = {
+        subject: _prepare_extrasensory_subject(
+            files[subject], feature_columns=feature_columns, gap_seconds=gap_seconds
+        )
+        for subject in (*train_subjects, *validation_subjects)
+    }
+
+    def concatenate(subjects):
+        arrays = [records[subject] for subject in subjects]
+        return tuple(
+            np.concatenate(parts, axis=0) for parts in zip(*arrays, strict=True)
+        )
+
+    train_arrays = concatenate(train_subjects)
+    validation_arrays = concatenate(validation_subjects)
+    mean, scale = fit_standardizer(train_arrays[0])
+
+    def dataset(arrays):
+        features, labels, boundaries = arrays
+        return TemporalTensorDataset(
+            features=torch.from_numpy(apply_standardizer(features, mean, scale)).to(
+                torch.float32
+            ),
+            labels=torch.from_numpy(labels).to(torch.long),
+            boundaries=torch.from_numpy(boundaries).to(torch.bool),
+        )
+
+    train = dataset(train_arrays)
+    validation = dataset(validation_arrays)
+    return DatasetSplits(
+        train=train,
+        validation=validation,
+        test=validation,
+        metadata={
+            "dataset": "ExtraSensory development",
+            "feature_family": "raw_acc",
+            "feature_columns": list(feature_columns),
+            "gap_seconds": int(gap_seconds),
+            "activity_classes": ["lying", "sitting", "standing", "moving"],
+            "train_subjects": list(train_subjects),
+            "validation_subjects": list(validation_subjects),
+            "train_subject_rows": {
+                subject: len(records[subject][0]) for subject in train_subjects
+            },
+            "validation_subject_rows": {
+                subject: len(records[subject][0]) for subject in validation_subjects
+            },
+            "heldout_subjects": list(heldout_subjects),
+            "heldout_subjects_accessed": False,
+            "feature_mean": mean.tolist(),
+            "feature_scale": scale.tolist(),
+            "source_sha256": {
+                files[subject].name: _sha256(files[subject])
+                for subject in (*train_subjects, *validation_subjects)
+            },
+        },
+    )
+
+
+def _prepare_wisdm_subject(path: Path, *, window_samples: int):
+    if window_samples <= 1:
+        raise ValueError("WISDM window_samples must exceed one")
+    frame = pd.read_csv(
+        path,
+        header=None,
+        names=("subject", "activity", "timestamp", "x", "y", "z"),
+        dtype={
+            "subject": "int64",
+            "activity": "string",
+            "timestamp": "int64",
+            "x": "float32",
+            "y": "float32",
+        },
+        converters={"z": lambda value: float(value.rstrip(";"))},
+    )
+    activity = frame["activity"].to_numpy(dtype=str)
+    timestamp = frame["timestamp"].to_numpy(dtype=np.int64)
+    raw = frame[["x", "y", "z"]].to_numpy(dtype=np.float32)
+    magnitude = np.linalg.vector_norm(raw, axis=1, keepdims=True)
+    raw = np.concatenate((raw, magnitude), axis=1)
+    breaks = np.zeros(len(frame), dtype=bool)
+    if len(breaks):
+        breaks[0] = True
+        breaks[1:] = (activity[1:] != activity[:-1]) | (timestamp[1:] <= timestamp[:-1])
+        valid_deltas = np.diff(timestamp)
+        valid_deltas = valid_deltas[(valid_deltas > 0) & ~breaks[1:]]
+        if len(valid_deltas):
+            nominal = float(np.median(valid_deltas))
+            breaks[1:] |= np.diff(timestamp) > 1.5 * nominal
+
+    starts = np.flatnonzero(breaks)
+    stops = np.concatenate((starts[1:], [len(frame)])) if len(starts) else np.array([])
+    features = []
+    labels = []
+    boundaries = []
+    label_lookup = {code: index for index, code in enumerate(WISDM_ACTIVITY_CODES)}
+    for start, stop in zip(starts, stops, strict=True):
+        count = (stop - start) // window_samples
+        if count == 0:
+            continue
+        windows = raw[start : start + count * window_samples].reshape(
+            count, window_samples, 4
+        )
+        features.append(
+            np.concatenate(
+                (
+                    windows.mean(axis=1),
+                    windows.std(axis=1),
+                    windows.min(axis=1),
+                    windows.max(axis=1),
+                ),
+                axis=1,
+            ).astype(np.float32)
+        )
+        code = activity[start]
+        if code not in label_lookup:
+            raise ValueError(f"Unknown WISDM activity code '{code}'")
+        labels.append(np.full(count, label_lookup[code], dtype=np.int64))
+        segment_boundaries = np.zeros(count, dtype=bool)
+        segment_boundaries[0] = True
+        boundaries.append(segment_boundaries)
+    if not features:
+        raise ValueError(f"No complete WISDM windows in {path}")
+    return (
+        np.concatenate(features),
+        np.concatenate(labels),
+        np.concatenate(boundaries),
+    )
+
+
+def load_wisdm_development_protocol(
+    root,
+    *,
+    train_subjects=WISDM_TRAIN_SUBJECTS,
+    validation_subjects=WISDM_VALIDATION_SUBJECTS,
+    heldout_subjects=WISDM_HELDOUT_SUBJECTS,
+    window_samples: int = 40,
+) -> DatasetSplits:
+    """Load dense WISDM watch streams without opening held-out participants."""
+    root = Path(root)
+    roles = tuple(
+        tuple(int(subject) for subject in subjects)
+        for subjects in (train_subjects, validation_subjects, heldout_subjects)
+    )
+    train_subjects, validation_subjects, heldout_subjects = roles
+    if any(
+        set(left) & set(right)
+        for left, right in (
+            (roles[0], roles[1]),
+            (roles[0], roles[2]),
+            (roles[1], roles[2]),
+        )
+    ):
+        raise ValueError("WISDM participant roles must be disjoint")
+    development_subjects = (*train_subjects, *validation_subjects)
+    files = {
+        subject: root / f"data_{subject}_accel_watch.txt"
+        for subject in development_subjects
+    }
+    missing = [subject for subject, path in files.items() if not path.is_file()]
+    if missing:
+        raise FileNotFoundError(f"Missing WISDM participant files: {missing}")
+    records = {
+        subject: _prepare_wisdm_subject(path, window_samples=window_samples)
+        for subject, path in files.items()
+    }
+
+    def concatenate(subjects):
+        arrays = [records[subject] for subject in subjects]
+        return tuple(np.concatenate(parts) for parts in zip(*arrays, strict=True))
+
+    train_arrays = concatenate(train_subjects)
+    validation_arrays = concatenate(validation_subjects)
+    mean, scale = fit_standardizer(train_arrays[0])
+
+    def dataset(arrays):
+        features, labels, boundaries = arrays
+        return TemporalTensorDataset(
+            features=torch.from_numpy(apply_standardizer(features, mean, scale)).to(
+                torch.float32
+            ),
+            labels=torch.from_numpy(labels).to(torch.long),
+            boundaries=torch.from_numpy(boundaries).to(torch.bool),
+        )
+
+    train = dataset(train_arrays)
+    validation = dataset(validation_arrays)
+    return DatasetSplits(
+        train=train,
+        validation=validation,
+        test=validation,
+        metadata={
+            "dataset": "WISDM 2019 development",
+            "sensor": "watch accelerometer",
+            "window_samples": window_samples,
+            "activity_codes": list(WISDM_ACTIVITY_CODES),
+            "train_subjects": list(train_subjects),
+            "validation_subjects": list(validation_subjects),
+            "heldout_subjects": list(heldout_subjects),
+            "train_subject_rows": {
+                subject: len(records[subject][0]) for subject in train_subjects
+            },
+            "validation_subject_rows": {
+                subject: len(records[subject][0]) for subject in validation_subjects
+            },
+            "heldout_subjects_accessed": False,
+            "feature_mean": mean.tolist(),
+            "feature_scale": scale.tolist(),
+            "source_sha256": {path.name: _sha256(path) for path in files.values()},
+        },
+    )
+
+
 def concatenate_subject_streams(streams, *, subject_ids):
     feature_parts = []
     label_parts = []
@@ -344,7 +670,10 @@ def class_chunk_order(labels, *, chunk_size: int, seed: int):
     for label in np.unique(labels):
         indices = np.flatnonzero(labels == label)
         rng.shuffle(indices)
-        chunks.extend(indices[start : start + chunk_size] for start in range(0, len(indices), chunk_size))
+        chunks.extend(
+            indices[start : start + chunk_size]
+            for start in range(0, len(indices), chunk_size)
+        )
     rng.shuffle(chunks)
     order = np.concatenate(chunks)
     boundaries = np.zeros(len(order), dtype=bool)

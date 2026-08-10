@@ -48,7 +48,9 @@ def calibrate_batch_normalization(model, dataset, *, batch_size, passes, device)
         for start in range(0, len(dataset), batch_size):
             features = dataset.features[start : start + batch_size].to(device)
             if len(features) <= 1:
-                raise ValueError("every BatchNorm calibration batch must contain at least two examples")
+                raise ValueError(
+                    "every BatchNorm calibration batch must contain at least two examples"
+                )
             model(features)
             batches += 1
     seconds = time.perf_counter() - start_time
@@ -149,7 +151,9 @@ def fit_linear_probe(
     )
 
 
-def classification_metrics(logits: torch.Tensor, labels: torch.Tensor, *, num_classes: int):
+def classification_metrics(
+    logits: torch.Tensor, labels: torch.Tensor, *, num_classes: int
+):
     predicted = logits.detach().cpu().argmax(dim=1).numpy()
     expected = labels.detach().cpu().numpy()
     label_space = np.arange(num_classes)
@@ -165,8 +169,15 @@ def classification_metrics(logits: torch.Tensor, labels: torch.Tensor, *, num_cl
     )
     return {
         "accuracy": accuracy,
+        "support": total,
         "macro_f1": float(
-            f1_score(expected, predicted, labels=label_space, average="macro", zero_division=0)
+            f1_score(
+                expected,
+                predicted,
+                labels=label_space,
+                average="macro",
+                zero_division=0,
+            )
         ),
         "balanced_accuracy": float(recalls.mean()),
         "confusion_matrix": matrix.tolist(),
@@ -189,14 +200,18 @@ def representation_diagnostics(representations: torch.Tensor, boundaries: torch.
     )
     active_feature_fraction = float((variance > 1e-4).to(torch.float64).mean())
     scale = centered.square().mean(dim=0).sqrt()
-    standardized = torch.where(scale > 0, centered / scale.clamp_min(1e-12), torch.zeros_like(centered))
+    standardized = torch.where(
+        scale > 0, centered / scale.clamp_min(1e-12), torch.zeros_like(centered)
+    )
     correlation = standardized.T @ standardized / len(standardized)
     mask = ~torch.eye(correlation.shape[0], dtype=torch.bool)
     mean_offdiagonal = float(correlation[mask].abs().mean()) if mask.any() else 0.0
 
     if len(representations) > 1:
         valid = ~boundaries[1:]
-        squared_change = (representations[1:] - representations[:-1]).square().mean(dim=1)
+        squared_change = (
+            (representations[1:] - representations[:-1]).square().mean(dim=1)
+        )
         slowness = float(squared_change[valid].mean()) if valid.any() else float("nan")
     else:
         slowness = float("nan")
@@ -221,10 +236,14 @@ def class_structure_diagnostics(
     labels = labels.detach().to(torch.long).cpu()
     if representations.ndim != 2 or labels.shape != (len(representations),):
         raise ValueError("representations and labels have incompatible shapes")
-    present = [class_id for class_id in range(num_classes) if (labels == class_id).any()]
+    present = [
+        class_id for class_id in range(num_classes) if (labels == class_id).any()
+    ]
     if len(present) < 2:
         raise ValueError("class diagnostics require at least two observed classes")
-    centroids = torch.stack([representations[labels == class_id].mean(dim=0) for class_id in present])
+    centroids = torch.stack(
+        [representations[labels == class_id].mean(dim=0) for class_id in present]
+    )
     global_mean = representations.mean(dim=0)
     within = torch.zeros((), dtype=torch.float64)
     between = torch.zeros((), dtype=torch.float64)
@@ -246,13 +265,17 @@ def class_structure_diagnostics(
 
     class_means = centroids
     feature_scale = representations.std(dim=0, unbiased=False).clamp_min(1e-12)
-    selectivity = (class_means.max(dim=0).values - class_means.min(dim=0).values) / feature_scale
+    selectivity = (
+        class_means.max(dim=0).values - class_means.min(dim=0).values
+    ) / feature_scale
     return {
         "observed_classes": present,
         "between_class_scatter": float(between),
         "within_class_scatter": float(within),
         "between_within_scatter_ratio": float(between / within.clamp_min(1e-12)),
-        "nearest_centroid_accuracy": float((predicted == labels).to(torch.float64).mean()),
+        "nearest_centroid_accuracy": float(
+            (predicted == labels).to(torch.float64).mean()
+        ),
         "mean_prototype_cosine": float(prototype_cosines[offdiagonal].mean()),
         "median_unit_class_selectivity": float(selectivity.median()),
         "p90_unit_class_selectivity": float(torch.quantile(selectivity, 0.9)),
