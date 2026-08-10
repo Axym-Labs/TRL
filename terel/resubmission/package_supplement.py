@@ -259,6 +259,9 @@ def build_supplement_archive(
             "Frozen after the competitive v2 matrix completed and before any "
             "mechanism-audit run."
         ): "Frozen before any objective-mechanism run.",
+        "Frozen after the competitive v2 matrix completed and before any mechanism-audit": (
+            "Frozen before any objective-mechanism"
+        ),
         "The recovered canonical TeReL validation records": (
             "The selected TeReL-Offline validation records"
         ),
