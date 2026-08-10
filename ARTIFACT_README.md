@@ -92,4 +92,5 @@ uv run python -m terel.resubmission.package_supplement \
 ```
 
 The archive's `redaction-manifest.json` records source and packaged SHA-256
-values for every file and marks deterministic path redactions.
+values for every file and marks deterministic path, template-identifier, and
+provenance-label redactions. Metrics, configurations, and seeds are unchanged.
