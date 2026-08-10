@@ -8,6 +8,7 @@ from terel.resubmission.data import (
     class_chunk_order,
     concatenate_subject_streams,
     encoder_batches,
+    encoder_order,
     fit_standardizer,
     load_pamap2_protocol,
     mnist_protocol_from_tensors,
@@ -56,7 +57,9 @@ def test_subject_concatenation_marks_only_real_stream_boundaries():
         3: (np.array([[7.0], [8.0], [9.0]]), np.array([1, 1, 2])),
     }
 
-    features, labels, boundaries = concatenate_subject_streams(streams, subject_ids=(1, 3))
+    features, labels, boundaries = concatenate_subject_streams(
+        streams, subject_ids=(1, 3)
+    )
 
     assert features[:, 0].tolist() == [1.0, 2.0, 7.0, 8.0, 9.0]
     assert labels.tolist() == [0, 0, 1, 1, 2]
@@ -99,6 +102,24 @@ def test_chronological_encoder_batches_preserve_data_boundaries_without_labels()
     assert torch.equal(features, dataset.features)
     assert torch.equal(boundaries, dataset.boundaries)
     assert all(len(batch) == 2 for batch in batches)
+
+
+def test_encoder_order_exposes_indices_and_pair_validity_for_online_evaluation():
+    dataset = TemporalTensorDataset(
+        features=torch.arange(8, dtype=torch.float32).reshape(4, 2),
+        labels=torch.tensor([0, 1, 0, 1]),
+        boundaries=torch.tensor([True, False, True, False]),
+    )
+
+    order, boundaries = encoder_order(
+        dataset,
+        order_mode="chronological",
+        seed=5,
+        chunk_size=2,
+    )
+
+    assert torch.equal(order, torch.arange(4))
+    assert torch.equal(boundaries, dataset.boundaries)
 
 
 def test_within_stream_shuffle_preserves_boundaries_and_membership():
@@ -172,7 +193,9 @@ def test_pamap_subject_split_and_normalization_are_train_only():
 
     x_train = np.array([[1.0, np.nan], [3.0, 5.0]], dtype=np.float32)
     mean, scale = fit_standardizer(x_train)
-    transformed = apply_standardizer(np.array([[100.0, np.nan]], dtype=np.float32), mean, scale)
+    transformed = apply_standardizer(
+        np.array([[100.0, np.nan]], dtype=np.float32), mean, scale
+    )
     assert np.allclose(mean, [2.0, 5.0])
     assert np.allclose(scale, [1.0, 1.0])
     assert np.allclose(transformed, [[98.0, 0.0]])

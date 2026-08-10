@@ -11,6 +11,57 @@ class LossCoefficients:
     covariance: float = 1.0
 
 
+def offline_soft_sfa_loss(
+    z: torch.Tensor,
+    *,
+    boundaries: torch.Tensor,
+    coefficients: LossCoefficients,
+    variance_target: float,
+):
+    """Soft-SFA objective evaluated directly on a complete subsequence.
+
+    Unlike the local rule, all moments and adjacent differences remain in the
+    autograd graph.  This objective is therefore reserved for TeReL-Offline.
+    """
+    if z.ndim != 2 or z.shape[0] == 0:
+        raise ValueError("z must be a non-empty [samples, features] tensor")
+    if boundaries.shape != (len(z),) or boundaries.dtype != torch.bool:
+        raise ValueError("boundaries must be one boolean flag per sample")
+    if variance_target <= 0.0:
+        raise ValueError("variance_target must be positive")
+
+    if len(z) > 1:
+        valid = ~boundaries[1:]
+        pair_losses = (z[1:] - z[:-1]).square().mean(dim=1)
+        similarity_loss = pair_losses[valid].mean() if valid.any() else z.sum() * 0.0
+        valid_pairs = valid.sum()
+    else:
+        similarity_loss = z.sum() * 0.0
+        valid_pairs = torch.zeros((), dtype=torch.long, device=z.device)
+
+    centered = z - z.mean(dim=0)
+    variance = centered.square().mean(dim=0)
+    variance_deficit = F.relu(
+        torch.as_tensor(variance_target, dtype=z.dtype, device=z.device) - variance
+    )
+    variance_loss = variance_deficit.square().mean()
+    covariance = centered.T @ centered / len(centered)
+    offdiagonal = covariance - torch.diag_embed(torch.diagonal(covariance))
+    covariance_loss = offdiagonal.square().sum() / z.shape[1]
+    loss = (
+        coefficients.similarity * similarity_loss
+        + coefficients.variance * variance_loss
+        + coefficients.covariance * covariance_loss
+    )
+    return loss, {
+        "similarity_loss": similarity_loss.detach(),
+        "variance_loss": variance_loss.detach(),
+        "covariance_loss": covariance_loss.detach(),
+        "mean_variance": variance.detach().mean(),
+        "valid_temporal_pairs": valid_pairs.detach(),
+    }
+
+
 def lateral_proxy_error_bound(
     *,
     lateral: torch.Tensor,

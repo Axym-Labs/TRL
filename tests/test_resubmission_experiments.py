@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 from terel.resubmission import experiments
@@ -23,6 +24,28 @@ def test_plain_sgd_has_no_momentum_or_adaptive_state():
     parameter.grad = torch.tensor([2.0])
     optimizer.step()
     assert optimizer.state == {}
+
+
+def test_plain_sgd_weight_decay_is_the_declared_leaky_integrator_update():
+    parameter = torch.nn.Parameter(torch.tensor([2.0]))
+    optimizer = experiments._optimizer(
+        "plain_sgd",
+        [parameter],
+        learning_rate=0.1,
+        weight_decay=0.2,
+    )
+    parameter.grad = torch.tensor([3.0])
+
+    optimizer.step()
+
+    assert torch.allclose(
+        parameter, torch.tensor([(1.0 - 0.1 * 0.2) * 2.0 - 0.1 * 3.0])
+    )
+    dynamics = experiments._optimizer_dynamics(
+        "plain_sgd", learning_rate=0.1, weight_decay=0.2
+    )
+    assert dynamics["exact_leaky_integrator"] is True
+    assert dynamics["weight_retention_per_step"] == pytest.approx(0.98)
 
 
 def test_residual_operation_proxy_counts_both_dense_operators():
@@ -85,6 +108,36 @@ def test_equal_offset_experiment_accounts_for_both_delayed_vectors():
     assert result["encoder_config"]["residual_lateral_signal_offset"] == 1
 
 
+@pytest.mark.parametrize(
+    "matrix_mode", ["representation_shared", "state_shared", "combined"]
+)
+def test_one_matrix_residual_candidates_report_one_auxiliary_matrix(matrix_mode):
+    result = run_representation_experiment(
+        splits=_toy_splits(),
+        dataset_name="toy",
+        num_classes=2,
+        seed=103,
+        encoder=EncoderExperimentConfig(
+            method="terel_residual",
+            hidden_dims=(4, 2),
+            activation="relu",
+            epochs=1,
+            batch_size=1,
+            order_mode="chronological",
+            optimizer="plain_sgd",
+            learning_rate=0.001,
+            lateral_matrix_mode=matrix_mode,
+            combined_lateral_state_weight=0.5,
+        ),
+        probe=_probe_config(),
+        evaluation_split="validation",
+        device=torch.device("cpu"),
+    )
+
+    expected = (4**2 + 2**2) * torch.tensor(0.0).element_size()
+    assert result["resource_accounting"]["auxiliary_parameter_bytes"] == expected
+
+
 def test_adam_component_ablation_accepts_explicit_betas():
     parameter = torch.nn.Parameter(torch.tensor([1.0]))
     optimizer = experiments._optimizer(
@@ -99,6 +152,85 @@ def test_adam_component_ablation_accepts_explicit_betas():
 
     assert optimizer.param_groups[0]["betas"] == (0.0, 0.99)
     assert optimizer.param_groups[0]["eps"] == 1e-6
+
+
+def test_online_inference_continues_label_free_terel_after_probe_fitting():
+    result = run_representation_experiment(
+        splits=_toy_splits(),
+        dataset_name="toy",
+        num_classes=2,
+        seed=13,
+        encoder=EncoderExperimentConfig(
+            method="terel_local",
+            hidden_dims=(3,),
+            activation="identity",
+            epochs=1,
+            batch_size=1,
+            order_mode="chronological",
+            optimizer="plain_sgd",
+            learning_rate=0.001,
+            inference_mode="online",
+        ),
+        probe=_probe_config(),
+        evaluation_split="validation",
+        device=torch.device("cpu"),
+    )
+
+    assert result["online_inference"]["examples"] == len(_toy_splits().validation)
+    assert result["online_inference"]["labels_accessed"] is False
+    assert result["online_inference"]["optimizer_steps"] == len(
+        _toy_splits().validation
+    )
+
+
+def test_supervised_linear_reference_uses_raw_inputs_without_encoder_training():
+    result = run_representation_experiment(
+        splits=_toy_splits(),
+        dataset_name="toy",
+        num_classes=2,
+        seed=19,
+        encoder=EncoderExperimentConfig(
+            method="supervised_linear",
+            hidden_dims=(99,),
+        ),
+        probe=_probe_config(),
+        evaluation_split="validation",
+        device=torch.device("cpu"),
+    )
+
+    assert result["encoder_training"] is None
+    assert result["resource_accounting"]["probe_input_dim"] == 2
+    assert result["resource_accounting"]["dynamic_state_bytes"] == 0
+    assert result["metrics"]["accuracy"] >= 0.5
+
+
+def test_terel_offline_is_end_to_end_final_layer_soft_sfa_without_normalization():
+    result = run_representation_experiment(
+        splits=_toy_splits(),
+        dataset_name="toy",
+        num_classes=2,
+        seed=23,
+        encoder=EncoderExperimentConfig(
+            method="terel_offline",
+            hidden_dims=(4, 2),
+            activation="relu",
+            normalization="none",
+            epochs=2,
+            batch_size=3,
+            order_mode="chronological",
+            optimizer="plain_sgd",
+            learning_rate=0.01,
+            weight_decay=0.001,
+        ),
+        probe=_probe_config(),
+        evaluation_split="validation",
+        device=torch.device("cpu"),
+    )
+
+    assert result["encoder_training"]["training_mode"] == "end_to_end_subsequence"
+    assert len(result["encoder_training"]["layer_parameter_delta_l2"]) == 2
+    assert result["resource_accounting"]["dynamic_state_bytes"] == 0
+    assert result["encoder_config"]["normalization"] == "none"
 
 
 from terel.resubmission.provenance import TestGateError

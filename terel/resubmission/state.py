@@ -66,6 +66,16 @@ class TeReLState(nn.Module):
         return self.previous_neuron_state
 
     @torch.no_grad()
+    def reset_sequence(self) -> None:
+        """Forget temporal predecessors while retaining learned running state."""
+        self.previous.zero_()
+        if self.previous_centered is not None:
+            self.previous_centered.zero_()
+        if self.previous_neuron_state is not None:
+            self.previous_neuron_state.zero_()
+        self.has_previous.fill_(False)
+
+    @torch.no_grad()
     def update_previous_neuron_state(self, neuron_state: torch.Tensor) -> None:
         if neuron_state.ndim != 2 or neuron_state.shape[1] != self.mean.numel():
             raise ValueError(
@@ -103,7 +113,18 @@ class TeReLState(nn.Module):
         )
 
     @torch.no_grad()
-    def update(self, z: torch.Tensor) -> None:
+    def update_lateral_moment(self, moment: torch.Tensor) -> None:
+        if moment.shape != self.lateral.shape:
+            raise ValueError(
+                f"Expected lateral moment {tuple(self.lateral.shape)}, "
+                f"got {tuple(moment.shape)}"
+            )
+        self.lateral.mul_(self.lateral_momentum).add_(
+            moment.detach(), alpha=1.0 - self.lateral_momentum
+        )
+
+    @torch.no_grad()
+    def update(self, z: torch.Tensor, *, update_lateral: bool = True) -> None:
         if z.ndim != 2 or z.shape[1] != self.mean.numel():
             raise ValueError(
                 f"Expected activations [batch, {self.mean.numel()}], got {tuple(z.shape)}"
@@ -121,7 +142,8 @@ class TeReLState(nn.Module):
         lm = self.lateral_momentum
         self.mean.mul_(sm).add_(batch_mean, alpha=1.0 - sm)
         self.variance.mul_(sm).add_(batch_variance, alpha=1.0 - sm)
-        self.lateral.mul_(lm).add_(covariance, alpha=1.0 - lm)
+        if update_lateral:
+            self.lateral.mul_(lm).add_(covariance, alpha=1.0 - lm)
         self.previous.copy_(values[-1])
         if self.previous_centered is not None:
             self.previous_centered.copy_(centered[-1])

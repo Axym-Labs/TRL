@@ -5,8 +5,9 @@ from terel.resubmission.objective import (
     detached_terel_loss,
     direct_offdiagonal_covariance_loss,
     lateral_proxy_error_bound,
-    terel_loss,
+    offline_soft_sfa_loss,
     temporal_references,
+    terel_loss,
 )
 from terel.resubmission.state import TeReLState
 
@@ -59,7 +60,9 @@ def test_temporal_references_respect_stream_boundaries():
     z = torch.tensor([[1.0], [2.0], [5.0], [6.0]], requires_grad=True)
     boundaries = torch.tensor([False, False, True, False])
 
-    previous, valid = temporal_references(z, state=state, boundaries=boundaries, detach=True)
+    previous, valid = temporal_references(
+        z, state=state, boundaries=boundaries, detach=True
+    )
 
     assert torch.equal(previous, torch.tensor([[9.0], [1.0], [2.0], [5.0]]))
     assert torch.equal(valid, torch.tensor([True, True, False, True]))
@@ -117,8 +120,12 @@ def test_direct_covariance_control_is_zero_only_for_decorrelated_fixture():
     correlated = torch.tensor([[1.0, 1.0], [-1.0, -1.0]])
     decorrelated = torch.tensor([[1.0, 1.0], [-1.0, 1.0]])
 
-    correlated_loss = direct_offdiagonal_covariance_loss(correlated, mean=torch.zeros(2))
-    decorrelated_loss = direct_offdiagonal_covariance_loss(decorrelated, mean=torch.zeros(2))
+    correlated_loss = direct_offdiagonal_covariance_loss(
+        correlated, mean=torch.zeros(2)
+    )
+    decorrelated_loss = direct_offdiagonal_covariance_loss(
+        decorrelated, mean=torch.zeros(2)
+    )
 
     assert torch.allclose(correlated_loss, torch.tensor(1.0))
     assert torch.allclose(decorrelated_loss, torch.tensor(0.0))
@@ -142,3 +149,20 @@ def test_covariance_proxy_can_use_an_explicit_shifted_reference():
 
     assert torch.allclose(loss, torch.tensor(5.5))
 
+
+def test_offline_soft_sfa_uses_only_valid_within_subsequence_pairs():
+    z = torch.tensor([[0.0], [2.0], [20.0], [23.0]], requires_grad=True)
+
+    loss, metrics = offline_soft_sfa_loss(
+        z,
+        boundaries=torch.tensor([True, False, True, False]),
+        coefficients=LossCoefficients(
+            similarity=1.0,
+            variance=0.0,
+            covariance=0.0,
+        ),
+        variance_target=1.0,
+    )
+
+    assert torch.allclose(loss, torch.tensor(6.5))
+    assert metrics["valid_temporal_pairs"].item() == 2

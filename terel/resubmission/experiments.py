@@ -17,19 +17,20 @@ from .baselines import (
     train_local_supervised_contrastive,
     train_supervised_mlp,
 )
-from .data import DatasetSplits, class_chunk_order
+from .data import DatasetSplits, class_chunk_order, encoder_order
 from .evaluation import (
     calibrate_batch_normalization,
     class_structure_diagnostics,
     classification_metrics,
+    extract_online_representations,
     extract_representations,
     fit_linear_probe,
     representation_diagnostics,
 )
-from .model import LayerLocalEncoder
+from .model import LayerLocalEncoder, OfflineEncoder
 from .objective import LossCoefficients
 from .provenance import TestGateError, assert_test_gate
-from .training import train_local_encoder
+from .training import train_local_encoder, train_offline_encoder
 
 
 @dataclass(frozen=True)
@@ -75,6 +76,10 @@ class EncoderExperimentConfig:
     residual_lateral_moment_normalization: str = "none"
     residual_lateral_coefficient: float = 0.5
     residual_lateral_signal_offset: int = 0
+    inference_mode: str = "offline"
+    postsynaptic_state_mode: str = "exact"
+    lateral_matrix_mode: str = "two_matrix"
+    combined_lateral_state_weight: float = 0.5
 
 
 @dataclass(frozen=True)
@@ -140,6 +145,36 @@ def _optimizer(
             momentum=momentum,
             weight_decay=weight_decay,
         )
+    raise ValueError(f"Unknown optimizer: {name}")
+
+
+def _optimizer_dynamics(name, *, learning_rate: float, weight_decay: float):
+    """Describe the per-step decay semantics without conflating optimizer states."""
+    retention = 1.0 - learning_rate * weight_decay
+    if name == "plain_sgd":
+        return {
+            "optimizer": name,
+            "decay_type": "coupled_l2",
+            "weight_decay": float(weight_decay),
+            "weight_retention_per_step": float(retention),
+            "exact_leaky_integrator": True,
+        }
+    if name == "sgd":
+        return {
+            "optimizer": name,
+            "decay_type": "coupled_l2_with_momentum",
+            "weight_decay": float(weight_decay),
+            "weight_retention_per_step": None,
+            "exact_leaky_integrator": False,
+        }
+    if name == "adamw":
+        return {
+            "optimizer": name,
+            "decay_type": "decoupled",
+            "weight_decay": float(weight_decay),
+            "weight_retention_per_step": float(retention),
+            "exact_leaky_integrator": False,
+        }
     raise ValueError(f"Unknown optimizer: {name}")
 
 
@@ -212,6 +247,7 @@ def _operation_proxy(
         "terel_direct_batch",
         "terel_shift",
         "terel_residual",
+        "terel_offline",
         "local_supcon",
         "bp",
     }:
@@ -233,7 +269,11 @@ def _operation_proxy(
         else:
             stage_examples = examples
             linear = 3 * examples * weights
-        if method.startswith("terel_"):
+        if method == "terel_offline":
+            pairwise = (
+                2 * int(training.get("steps", 0)) * hidden_dims[-1] * hidden_dims[-1]
+            )
+        elif method.startswith("terel_"):
             dense_operations = (
                 3 + residual_lateral_steps if method == "terel_residual" else 2
             )
@@ -345,6 +385,15 @@ def run_representation_experiment(
         )
     if probe.readout not in {"last", "all"}:
         raise ValueError("probe readout must be 'last' or 'all'")
+    if encoder.inference_mode not in {"offline", "online"}:
+        raise ValueError("inference_mode must be 'offline' or 'online'")
+    if encoder.inference_mode == "online" and encoder.method not in {
+        "terel_local",
+        "terel_direct",
+        "terel_shift",
+        "terel_residual",
+    }:
+        raise ValueError("online inference is defined only for local TeReL methods")
 
     set_reproducible_seed(seed)
     train_dataset = splits.train
@@ -357,6 +406,7 @@ def run_representation_experiment(
     normalization_calibration = None
     probe_training = None
     optimizer = None
+    online_inference = None
     causal_dynamic_state_bytes = 0
     auxiliary_parameter_bytes = 0
 
@@ -445,6 +495,11 @@ def run_representation_experiment(
                     residual_lateral_signal_offset=(
                         encoder.residual_lateral_signal_offset
                     ),
+                    postsynaptic_state_mode=encoder.postsynaptic_state_mode,
+                    lateral_matrix_mode=encoder.lateral_matrix_mode,
+                    combined_lateral_state_weight=(
+                        encoder.combined_lateral_state_weight
+                    ),
                 )
         elif encoder.batch_norm_calibration_passes:
             normalization_calibration = calibrate_batch_normalization(
@@ -486,6 +541,54 @@ def run_representation_experiment(
             weight_decay=probe.weight_decay,
             device=device,
         )
+        if encoder.inference_mode == "online":
+            order, boundaries = encoder_order(
+                evaluation_dataset,
+                order_mode=encoder.order_mode,
+                seed=seed,
+                chunk_size=encoder.chunk_size,
+            )
+            detach_previous, covariance_mode = resolve_terel_objective_mode(method)
+            evaluation_representations, online_inference = (
+                extract_online_representations(
+                    model,
+                    optimizer,
+                    evaluation_dataset.features,
+                    order=order,
+                    boundaries=boundaries,
+                    coefficients=LossCoefficients(
+                        similarity=encoder.similarity_coefficient,
+                        variance=encoder.variance_coefficient,
+                        covariance=encoder.covariance_coefficient,
+                    ),
+                    variance_target=encoder.variance_target,
+                    detach_previous=detach_previous,
+                    covariance_mode=covariance_mode,
+                    device=device,
+                    use_all_layers=probe.readout == "all",
+                    residual_lateral_steps=encoder.residual_lateral_steps,
+                    residual_lateral_step_size=encoder.residual_lateral_step_size,
+                    residual_lateral_rule=encoder.residual_lateral_rule,
+                    residual_lateral_include_diagonal=(
+                        encoder.residual_lateral_include_diagonal
+                    ),
+                    residual_lateral_moment_normalization=(
+                        encoder.residual_lateral_moment_normalization
+                    ),
+                    residual_lateral_coefficient=(encoder.residual_lateral_coefficient),
+                    residual_lateral_signal_offset=(
+                        encoder.residual_lateral_signal_offset
+                    ),
+                    postsynaptic_state_mode=encoder.postsynaptic_state_mode,
+                    lateral_matrix_mode=encoder.lateral_matrix_mode,
+                    combined_lateral_state_weight=(
+                        encoder.combined_lateral_state_weight
+                    ),
+                )
+            )
+            evaluation_probe_representations, evaluation_probe_labels = _probe_view(
+                evaluation_representations, evaluation_dataset
+            )
         with torch.no_grad():
             logits = linear_probe(evaluation_probe_representations.to(device)).cpu()
         dynamic_state_bytes = _buffer_bytes(model) if method.startswith("terel_") else 0
@@ -493,6 +596,105 @@ def run_representation_experiment(
             causal_dynamic_state_bytes, auxiliary_parameter_bytes = (
                 _terel_resource_bytes(model)
             )
+
+    elif method == "terel_offline":
+        if encoder.normalization != "none":
+            raise ValueError("TeReL-Offline does not use normalization")
+        if encoder.activation != "relu":
+            raise ValueError("TeReL-Offline uses ReLU activations")
+        model = OfflineEncoder(
+            input_dim=input_dim,
+            hidden_dims=encoder.hidden_dims,
+            activation=encoder.activation,
+        ).to(device)
+        optimizer = _optimizer(
+            encoder.optimizer,
+            model.encoder_parameters(),
+            learning_rate=encoder.learning_rate,
+            weight_decay=encoder.weight_decay,
+            momentum=encoder.optimizer_momentum,
+            beta1=encoder.optimizer_beta1,
+            beta2=encoder.optimizer_beta2,
+            epsilon=encoder.optimizer_epsilon,
+        )
+        encoder_training = train_offline_encoder(
+            model=model,
+            optimizer=optimizer,
+            dataset=train_dataset,
+            epochs=encoder.epochs,
+            batch_size=encoder.batch_size,
+            order_mode=encoder.order_mode,
+            order_seed=seed,
+            chunk_size=encoder.chunk_size,
+            coefficients=LossCoefficients(
+                similarity=encoder.similarity_coefficient,
+                variance=encoder.variance_coefficient,
+                covariance=encoder.covariance_coefficient,
+            ),
+            variance_target=encoder.variance_target,
+            device=device,
+        )
+        train_representations = extract_representations(
+            model,
+            train_dataset,
+            batch_size=probe.batch_size,
+            device=device,
+            use_all_layers=probe.readout == "all",
+        )
+        evaluation_representations = extract_representations(
+            model,
+            evaluation_dataset,
+            batch_size=probe.batch_size,
+            device=device,
+            use_all_layers=probe.readout == "all",
+        )
+        train_probe_representations, train_probe_labels = _probe_view(
+            train_representations, train_dataset
+        )
+        evaluation_probe_representations, evaluation_probe_labels = _probe_view(
+            evaluation_representations, evaluation_dataset
+        )
+        linear_probe, probe_training = fit_linear_probe(
+            train_probe_representations,
+            train_probe_labels,
+            num_classes=num_classes,
+            seed=seed + 10_000,
+            epochs=probe.epochs,
+            batch_size=probe.batch_size,
+            optimizer_name=probe.optimizer,
+            learning_rate=probe.learning_rate,
+            weight_decay=probe.weight_decay,
+            device=device,
+        )
+        with torch.no_grad():
+            logits = linear_probe(evaluation_probe_representations.to(device)).cpu()
+        dynamic_state_bytes = 0
+
+    elif method == "supervised_linear":
+        train_representations = train_dataset.features.detach().cpu()
+        evaluation_representations = evaluation_dataset.features.detach().cpu()
+        train_probe_representations, train_probe_labels = _probe_view(
+            train_representations, train_dataset
+        )
+        evaluation_probe_representations, evaluation_probe_labels = _probe_view(
+            evaluation_representations, evaluation_dataset
+        )
+        linear_probe, probe_training = fit_linear_probe(
+            train_probe_representations,
+            train_probe_labels,
+            num_classes=num_classes,
+            seed=seed + 10_000,
+            epochs=probe.epochs,
+            batch_size=probe.batch_size,
+            optimizer_name=probe.optimizer,
+            learning_rate=probe.learning_rate,
+            weight_decay=probe.weight_decay,
+            device=device,
+        )
+        model = linear_probe
+        with torch.no_grad():
+            logits = linear_probe(evaluation_probe_representations.to(device)).cpu()
+        dynamic_state_bytes = 0
 
     elif method == "bp":
         model = SupervisedMLP(
@@ -718,6 +920,27 @@ def run_representation_experiment(
         "normalization_calibration": serialized_calibration,
         "probe_training": asdict(probe_training)
         if probe_training is not None
+        else None,
+        "online_inference": asdict(online_inference)
+        if online_inference is not None
+        else None,
+        "optimizer_dynamics": _optimizer_dynamics(
+            encoder.optimizer,
+            learning_rate=encoder.learning_rate,
+            weight_decay=encoder.weight_decay,
+        )
+        if method
+        in {
+            "terel_local",
+            "terel_batch",
+            "terel_direct",
+            "terel_direct_batch",
+            "terel_shift",
+            "terel_residual",
+            "terel_offline",
+            "local_supcon",
+            "bp",
+        }
         else None,
         "metrics": classification_metrics(
             logits, evaluation_probe_labels, num_classes=num_classes

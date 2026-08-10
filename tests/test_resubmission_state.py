@@ -28,3 +28,25 @@ def test_dynamic_state_size_is_constant_in_stream_length():
 
     assert before == expected_numel
     assert after == expected_numel
+
+
+def test_reset_sequence_clears_only_temporal_predecessors():
+    """A new stream keeps learned statistics but cannot inherit a predecessor."""
+    state = TeReLState(features=3, statistics_momentum=0.9, lateral_momentum=0.95)
+    state.update(torch.tensor([[1.0, 2.0, 3.0]]))
+    state.ensure_previous_centered().fill_(4.0)
+    state.ensure_previous_neuron_state().fill_(5.0)
+    state.ensure_residual_lateral().fill_(6.0)
+    learned = {
+        name: getattr(state, name).clone()
+        for name in ("mean", "variance", "lateral", "residual_lateral")
+    }
+
+    state.reset_sequence()
+
+    assert not bool(state.has_previous)
+    assert torch.count_nonzero(state.previous) == 0
+    assert torch.count_nonzero(state.previous_centered) == 0
+    assert torch.count_nonzero(state.previous_neuron_state) == 0
+    for name, value in learned.items():
+        assert torch.equal(getattr(state, name), value)

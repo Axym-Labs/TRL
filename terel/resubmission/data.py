@@ -373,14 +373,14 @@ def _prepare_capture24_subject(
         },
     ).set_index("time")
     frame["magnitude"] = np.sqrt(
-        frame["x"] * frame["x"]
-        + frame["y"] * frame["y"]
-        + frame["z"] * frame["z"]
+        frame["x"] * frame["x"] + frame["y"] * frame["y"] + frame["z"] * frame["z"]
     )
     frequency = f"{window_seconds}s"
-    numeric = frame[["x", "y", "z", "magnitude"]].resample(
-        frequency, origin="start"
-    ).agg(("mean", "std", "min", "max"))
+    numeric = (
+        frame[["x", "y", "z", "magnitude"]]
+        .resample(frequency, origin="start")
+        .agg(("mean", "std", "min", "max"))
+    )
     annotation = frame["annotation"].resample(frequency, origin="start").first()
     labels = annotation.astype("string").map(label_map)
     valid = labels.notna() & numeric.notna().all(axis=1)
@@ -394,9 +394,7 @@ def _prepare_capture24_subject(
         boundaries[1:] = gaps_ms > int(window_seconds * 1_050)
     return (
         numeric.to_numpy(dtype=np.float32),
-        np.asarray(
-            [CAPTURE24_LABELS.index(value) for value in labels], dtype=np.int64
-        ),
+        np.asarray([CAPTURE24_LABELS.index(value) for value in labels], dtype=np.int64),
         boundaries,
     )
 
@@ -434,9 +432,7 @@ def load_capture24_protocol(
     dictionary_path = root / "annotation-label-dictionary.csv"
     dictionary = pd.read_csv(dictionary_path)
     if CAPTURE24_LABEL_COLUMN not in dictionary:
-        raise ValueError(
-            f"CAPTURE-24 dictionary lacks '{CAPTURE24_LABEL_COLUMN}'"
-        )
+        raise ValueError(f"CAPTURE-24 dictionary lacks '{CAPTURE24_LABEL_COLUMN}'")
     label_map = dict(
         zip(
             dictionary["annotation"],
@@ -449,9 +445,7 @@ def load_capture24_protocol(
         if access_heldout
         else (*train_subjects, *validation_subjects)
     )
-    files = {
-        subject: root / f"P{subject:03d}.csv.gz" for subject in loaded_subjects
-    }
+    files = {subject: root / f"P{subject:03d}.csv.gz" for subject in loaded_subjects}
     missing = [subject for subject, path in files.items() if not path.is_file()]
     if missing:
         raise FileNotFoundError(f"Missing CAPTURE-24 participant files: {missing}")
@@ -864,20 +858,17 @@ def class_chunk_order(labels, *, chunk_size: int, seed: int):
     return order, boundaries
 
 
-def encoder_batches(
+def encoder_order(
     dataset: TemporalTensorDataset,
     *,
-    batch_size: int,
     order_mode: str,
     seed: int,
     chunk_size: int,
 ):
-    """Yield label-free batches while making every invalid temporal edge explicit."""
-    if batch_size <= 0:
-        raise ValueError("batch_size must be positive")
+    """Return an encoder stream order and its explicit sequence boundaries."""
     if order_mode == "chronological":
         order = np.arange(len(dataset))
-        boundaries = dataset.boundaries
+        boundaries = dataset.boundaries.clone()
     elif order_mode == "shuffled":
         order = np.random.default_rng(seed).permutation(len(dataset))
         boundaries = torch.zeros(len(dataset), dtype=torch.bool)
@@ -910,11 +901,31 @@ def encoder_batches(
         raise ValueError(f"Unknown order mode: {order_mode}")
 
     index = torch.as_tensor(order, dtype=torch.long)
-    ordered_features = dataset.features[index]
     if order_mode == "chronological":
-        ordered_boundaries = boundaries[index]
+        boundaries = boundaries[index]
     else:
-        ordered_boundaries = boundaries
+        boundaries = torch.as_tensor(boundaries, dtype=torch.bool)
+    return index, boundaries
+
+
+def encoder_batches(
+    dataset: TemporalTensorDataset,
+    *,
+    batch_size: int,
+    order_mode: str,
+    seed: int,
+    chunk_size: int,
+):
+    """Yield label-free batches while making every invalid temporal edge explicit."""
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    index, ordered_boundaries = encoder_order(
+        dataset,
+        order_mode=order_mode,
+        seed=seed,
+        chunk_size=chunk_size,
+    )
+    ordered_features = dataset.features[index]
     for start in range(0, len(dataset), batch_size):
         stop = min(start + batch_size, len(dataset))
         yield ordered_features[start:stop], ordered_boundaries[start:stop]

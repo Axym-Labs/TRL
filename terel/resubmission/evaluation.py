@@ -8,6 +8,8 @@ from sklearn.metrics import confusion_matrix, f1_score
 from torch import nn
 
 from .data import TemporalTensorDataset
+from .objective import LossCoefficients
+from .training import local_train_step
 
 
 @dataclass(frozen=True)
@@ -25,6 +27,17 @@ class NormalizationCalibrationSummary:
     batches: int
     examples: int
     seconds: float
+
+
+@dataclass(frozen=True)
+class OnlineInferenceSummary:
+    examples: int
+    optimizer_steps: int
+    seconds: float
+    mean_loss: float
+    parameter_delta_l2: float
+    lateral_delta_l2: float
+    labels_accessed: bool = False
 
 
 @torch.no_grad()
@@ -86,6 +99,123 @@ def extract_representations(
             representations = model(features)
         batches.append(representations.detach().cpu())
     return torch.cat(batches, dim=0)
+
+
+def extract_online_representations(
+    model,
+    optimizer,
+    features: torch.Tensor,
+    *,
+    order: torch.Tensor,
+    boundaries: torch.Tensor,
+    coefficients: LossCoefficients,
+    variance_target: float,
+    detach_previous: bool,
+    covariance_mode: str,
+    device: torch.device,
+    use_all_layers: bool = False,
+    residual_lateral_steps: int = 1,
+    residual_lateral_step_size: float = 0.1,
+    residual_lateral_rule: str = "dual_inhibitory",
+    residual_lateral_include_diagonal: bool = True,
+    residual_lateral_moment_normalization: str = "none",
+    residual_lateral_coefficient: float = 0.5,
+    residual_lateral_signal_offset: int = 0,
+    postsynaptic_state_mode: str = "exact",
+    lateral_matrix_mode: str = "two_matrix",
+    combined_lateral_state_weight: float = 0.5,
+):
+    """Emit each representation, then apply TeReL before the next observation.
+
+    ``features``, ``order``, and ``boundaries`` are the complete interface to the
+    stream.  In particular, downstream labels are neither accepted nor read.
+    Returned rows are restored to their original feature indices so a probe fitted
+    before adaptation can be evaluated without changing its label alignment.
+    """
+    if features.ndim != 2 or len(features) == 0:
+        raise ValueError("features must be a non-empty [samples, dimensions] tensor")
+    if order.shape != (len(features),) or boundaries.shape != (len(features),):
+        raise ValueError("order and boundaries must contain one entry per sample")
+    if order.dtype != torch.long:
+        raise TypeError("order must be a long tensor")
+    if boundaries.dtype != torch.bool:
+        raise TypeError("boundaries must be a boolean tensor")
+    expected = torch.arange(len(features), dtype=torch.long)
+    if not torch.equal(torch.sort(order.detach().cpu()).values, expected):
+        raise ValueError("order must be a permutation of all sample indices")
+
+    model.to(device)
+    before_parameters = [
+        parameter.detach().cpu().clone() for parameter in model.encoder_parameters()
+    ]
+    before_lateral = [state.lateral.detach().cpu().clone() for state in model.states]
+    for state in model.states:
+        state.reset_sequence()
+
+    result = None
+    loss_sum = 0.0
+    start_time = time.perf_counter()
+    for stream_index, source_index in enumerate(order.tolist()):
+        boundary = bool(boundaries[stream_index])
+        if boundary:
+            for state in model.states:
+                state.reset_sequence()
+        observation = features[source_index].unsqueeze(0).to(device)
+        model.eval()
+        with torch.no_grad():
+            representation = model(observation, return_all=use_all_layers)
+            if use_all_layers:
+                representation = torch.cat(representation, dim=1)
+            representation = representation.detach().cpu()
+        if result is None:
+            result = torch.empty(
+                len(features), representation.shape[1], dtype=representation.dtype
+            )
+        result[source_index] = representation[0]
+
+        metrics = local_train_step(
+            model=model,
+            optimizer=optimizer,
+            x=observation,
+            boundaries=torch.tensor([boundary], dtype=torch.bool, device=device),
+            coefficients=coefficients,
+            variance_target=variance_target,
+            detach_previous=detach_previous,
+            covariance_mode=covariance_mode,
+            residual_lateral_steps=residual_lateral_steps,
+            residual_lateral_step_size=residual_lateral_step_size,
+            residual_lateral_rule=residual_lateral_rule,
+            residual_lateral_include_diagonal=residual_lateral_include_diagonal,
+            residual_lateral_moment_normalization=(
+                residual_lateral_moment_normalization
+            ),
+            residual_lateral_coefficient=residual_lateral_coefficient,
+            residual_lateral_signal_offset=residual_lateral_signal_offset,
+            postsynaptic_state_mode=postsynaptic_state_mode,
+            lateral_matrix_mode=lateral_matrix_mode,
+            combined_lateral_state_weight=combined_lateral_state_weight,
+        )
+        loss_sum += metrics["loss"]
+
+    parameter_squared_delta = 0.0
+    for parameter, before in zip(
+        model.encoder_parameters(), before_parameters, strict=True
+    ):
+        parameter_squared_delta += float(
+            (parameter.detach().cpu() - before).square().sum()
+        )
+    lateral_squared_delta = sum(
+        float((state.lateral.detach().cpu() - before).square().sum())
+        for state, before in zip(model.states, before_lateral, strict=True)
+    )
+    return result, OnlineInferenceSummary(
+        examples=len(features),
+        optimizer_steps=len(features),
+        seconds=time.perf_counter() - start_time,
+        mean_loss=loss_sum / len(features),
+        parameter_delta_l2=parameter_squared_delta**0.5,
+        lateral_delta_l2=lateral_squared_delta**0.5,
+    )
 
 
 def fit_linear_probe(

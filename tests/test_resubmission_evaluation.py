@@ -7,11 +7,13 @@ from terel.resubmission.evaluation import (
     calibrate_batch_normalization,
     class_structure_diagnostics,
     classification_metrics,
+    extract_online_representations,
     extract_representations,
     fit_linear_probe,
     representation_diagnostics,
 )
 from terel.resubmission.model import LayerLocalEncoder
+from terel.resubmission.objective import LossCoefficients
 
 
 def test_batch_norm_calibration_updates_only_running_statistics():
@@ -43,8 +45,12 @@ def test_batch_norm_calibration_updates_only_running_statistics():
         boundaries=torch.tensor([True, False, False, True, False, False]),
     )
     parameters_before = [parameter.detach().clone() for parameter in model.parameters()]
-    means_before = [normalization.running_mean.clone() for normalization in model.normalizations]
-    variances_before = [normalization.running_var.clone() for normalization in model.normalizations]
+    means_before = [
+        normalization.running_mean.clone() for normalization in model.normalizations
+    ]
+    variances_before = [
+        normalization.running_var.clone() for normalization in model.normalizations
+    ]
 
     summary = calibrate_batch_normalization(
         model,
@@ -66,13 +72,20 @@ def test_batch_norm_calibration_updates_only_running_statistics():
     )
     assert all(
         not torch.equal(before, normalization.running_mean)
-        for before, normalization in zip(means_before, model.normalizations, strict=True)
+        for before, normalization in zip(
+            means_before, model.normalizations, strict=True
+        )
     )
     assert all(
         not torch.equal(before, normalization.running_var)
-        for before, normalization in zip(variances_before, model.normalizations, strict=True)
+        for before, normalization in zip(
+            variances_before, model.normalizations, strict=True
+        )
     )
-    assert all(int(normalization.num_batches_tracked) == 4 for normalization in model.normalizations)
+    assert all(
+        int(normalization.num_batches_tracked) == 4
+        for normalization in model.normalizations
+    )
 
 
 def test_batch_norm_calibration_rejects_invalid_treatment():
@@ -126,7 +139,9 @@ def test_representation_extraction_supports_matched_last_and_all_layer_readouts(
         boundaries=torch.tensor([True, False, False]),
     )
 
-    last = extract_representations(model, dataset, batch_size=2, device=torch.device("cpu"))
+    last = extract_representations(
+        model, dataset, batch_size=2, device=torch.device("cpu")
+    )
     all_layers = extract_representations(
         model,
         dataset,
@@ -136,8 +151,51 @@ def test_representation_extraction_supports_matched_last_and_all_layer_readouts(
     )
 
     assert torch.equal(last, dataset.features)
-    assert torch.equal(all_layers, torch.cat([dataset.features, dataset.features], dim=1))
+    assert torch.equal(
+        all_layers, torch.cat([dataset.features, dataset.features], dim=1)
+    )
     assert model.training is False
+
+
+def test_online_representation_extraction_reads_before_label_free_update():
+    model = LayerLocalEncoder(
+        input_dim=1,
+        hidden_dims=(1,),
+        activation="identity",
+        statistics_momentum=0.9,
+        lateral_momentum=0.9,
+    )
+    with torch.no_grad():
+        model.layers[0].weight.fill_(1.0)
+        model.layers[0].bias.zero_()
+    optimizer = torch.optim.SGD(model.encoder_parameters(), lr=0.1)
+    features = torch.tensor([[1.0], [3.0], [2.0]])
+    order = torch.tensor([2, 0, 1])
+    boundaries = torch.tensor([True, False, False])
+
+    representations, summary = extract_online_representations(
+        model,
+        optimizer,
+        features,
+        order=order,
+        boundaries=boundaries,
+        coefficients=LossCoefficients(
+            similarity=1.0,
+            variance=1.0,
+            covariance=0.0,
+        ),
+        variance_target=2.0,
+        detach_previous=True,
+        covariance_mode="proxy",
+        device=torch.device("cpu"),
+    )
+
+    # Index 2 is encountered first and must therefore use the pre-update weight.
+    assert representations[2].item() == 2.0
+    assert summary.examples == 3
+    assert summary.optimizer_steps == 3
+    assert summary.parameter_delta_l2 > 0.0
+    assert summary.labels_accessed is False
 
 
 def test_fixed_linear_probe_and_metrics_recover_a_separable_problem():

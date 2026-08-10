@@ -1,5 +1,5 @@
-import torch
 import pytest
+import torch
 
 from terel.resubmission import training
 from terel.resubmission.data import TemporalTensorDataset
@@ -8,6 +8,8 @@ from terel.resubmission.objective import LossCoefficients
 from terel.resubmission.training import (
     augment_mnist_batch,
     local_train_step,
+    offline_train_step,
+    postsynaptic_learning_state,
     train_local_encoder,
 )
 
@@ -29,6 +31,44 @@ def test_leaky_relu_keeps_a_gradient_path_for_negative_units():
 
     assert torch.isclose(output[0, 0], torch.tensor(-0.02))
     assert torch.isclose(model.layers[0].weight.grad[0, 0], torch.tensor(-0.02))
+
+
+def test_relu_postsynaptic_state_matches_the_exact_preactivation_gradient():
+    preactivation = torch.tensor([[-1.0, 2.0]], requires_grad=True)
+    activation = torch.relu(preactivation)
+    target_residual = torch.tensor([[-3.0, -4.0]])
+
+    state = postsynaptic_learning_state(
+        preactivation=preactivation,
+        activation=activation,
+        activation_residual=target_residual,
+        mode="exact",
+    )
+
+    assert torch.equal(state, torch.tensor([[0.0, -4.0]]))
+    assert state.requires_grad is False
+
+
+def test_rectified_postsynaptic_state_is_explicitly_not_the_exact_gradient():
+    preactivation = torch.tensor([[1.0, 2.0]], requires_grad=True)
+    activation = torch.relu(preactivation)
+    target_residual = torch.tensor([[3.0, -4.0]])
+
+    exact = postsynaptic_learning_state(
+        preactivation=preactivation,
+        activation=activation,
+        activation_residual=target_residual,
+        mode="exact",
+    )
+    rectified = postsynaptic_learning_state(
+        preactivation=preactivation,
+        activation=activation,
+        activation_residual=target_residual,
+        mode="rectified",
+    )
+
+    assert torch.equal(exact, torch.tensor([[3.0, -4.0]]))
+    assert torch.equal(rectified, torch.tensor([[3.0, 0.0]]))
 
 
 def test_one_local_step_changes_every_declared_encoder_layer():
@@ -78,6 +118,42 @@ def test_later_layer_loss_has_no_gradient_path_to_earlier_layer():
     )[0]
 
     assert earlier_gradient is None
+
+
+def test_offline_final_layer_loss_updates_all_layers_without_state_updates():
+    torch.manual_seed(37)
+    model = LayerLocalEncoder(
+        input_dim=2,
+        hidden_dims=(3, 2),
+        activation="identity",
+        normalization="none",
+        statistics_momentum=0.9,
+        lateral_momentum=0.9,
+    )
+    optimizer = torch.optim.SGD(model.encoder_parameters(), lr=0.05)
+    before_weights = [layer.weight.detach().clone() for layer in model.layers]
+    before_state = [
+        tuple(buffer.clone() for buffer in state.buffers()) for state in model.states
+    ]
+
+    offline_train_step(
+        model=model,
+        optimizer=optimizer,
+        x=torch.tensor([[1.0, 0.0], [0.0, 1.0], [2.0, 1.0], [1.0, 2.0]]),
+        boundaries=torch.tensor([True, False, False, False]),
+        coefficients=LossCoefficients(similarity=1.0, variance=1.0, covariance=1.0),
+        variance_target=1.0,
+    )
+
+    assert all(
+        not torch.equal(before, layer.weight)
+        for before, layer in zip(before_weights, model.layers, strict=True)
+    )
+    for state, old_buffers in zip(model.states, before_state, strict=True):
+        assert all(
+            torch.equal(current, old)
+            for current, old in zip(state.buffers(), old_buffers, strict=True)
+        )
 
 
 def test_direct_covariance_control_updates_correlated_encoder():
@@ -200,7 +276,9 @@ def test_training_loop_records_every_layer_update_and_exact_example_budget():
     assert all(delta > 0.0 for delta in summary.layer_parameter_delta_l2)
     assert len(summary.layer_lateral_delta_l2) == 2
     assert all(delta > 0.0 for delta in summary.layer_lateral_delta_l2)
-    assert summary.dynamic_state_numel == sum(state.dynamic_state_numel() for state in model.states)
+    assert summary.dynamic_state_numel == sum(
+        state.dynamic_state_numel() for state in model.states
+    )
     assert summary.causal_dynamic_state_numel == sum(
         state.causal_dynamic_state_numel() for state in model.states
     )
@@ -261,7 +339,9 @@ def test_batch_normalization_parameters_are_registered_and_trainable():
         lateral_momentum=0.9,
     )
     optimizer = torch.optim.SGD(model.encoder_parameters(), lr=0.02)
-    before = [normalization.weight.detach().clone() for normalization in model.normalizations]
+    before = [
+        normalization.weight.detach().clone() for normalization in model.normalizations
+    ]
 
     local_train_step(
         model=model,

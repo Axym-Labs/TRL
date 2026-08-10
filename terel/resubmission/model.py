@@ -1,5 +1,5 @@
 from collections.abc import Iterable
-from itertools import chain
+from itertools import chain, pairwise
 
 import torch
 from torch import nn
@@ -71,7 +71,7 @@ class LayerLocalEncoder(nn.Module):
         dims = (input_dim, *hidden_dims)
         self.layers = nn.ModuleList(
             nn.Linear(in_features, out_features)
-            for in_features, out_features in zip(dims[:-1], dims[1:], strict=True)
+            for in_features, out_features in pairwise(dims)
         )
         if normalization == "none":
             self.normalizations = nn.ModuleList(nn.Identity() for _ in hidden_dims)
@@ -81,7 +81,9 @@ class LayerLocalEncoder(nn.Module):
                 for width in hidden_dims
             )
         elif normalization == "layer_norm":
-            self.normalizations = nn.ModuleList(nn.LayerNorm(width) for width in hidden_dims)
+            self.normalizations = nn.ModuleList(
+                nn.LayerNorm(width) for width in hidden_dims
+            )
         elif normalization == "streaming_norm":
             self.normalizations = nn.ModuleList(
                 StreamingNorm(
@@ -103,7 +105,8 @@ class LayerLocalEncoder(nn.Module):
         else:
             raise ValueError(f"Unsupported activation '{activation}'")
         self.states = nn.ModuleList(
-            TeReLState(width, statistics_momentum, lateral_momentum) for width in hidden_dims
+            TeReLState(width, statistics_momentum, lateral_momentum)
+            for width in hidden_dims
         )
 
     def encoder_parameters(self) -> Iterable[nn.Parameter]:
@@ -140,5 +143,44 @@ class LayerLocalEncoder(nn.Module):
         current = x
         for layer, normalization in zip(self.layers, self.normalizations, strict=True):
             current = self.activation(normalization(layer(current)))
+            activations.append(current)
+        return activations if return_all else activations[-1]
+
+
+class OfflineEncoder(nn.Module):
+    """End-to-end ReLU encoder for the nonlocal TeReL-Offline reference."""
+
+    def __init__(
+        self,
+        *,
+        input_dim: int,
+        hidden_dims: tuple[int, ...],
+        activation: str,
+    ):
+        super().__init__()
+        if not hidden_dims:
+            raise ValueError("hidden_dims must contain at least one layer")
+        dims = (input_dim, *hidden_dims)
+        self.layers = nn.ModuleList(
+            nn.Linear(in_features, out_features)
+            for in_features, out_features in pairwise(dims)
+        )
+        if activation == "relu":
+            self.activation = nn.ReLU()
+        elif activation == "leaky_relu":
+            self.activation = nn.LeakyReLU(negative_slope=0.01)
+        elif activation == "identity":
+            self.activation = nn.Identity()
+        else:
+            raise ValueError(f"Unsupported activation '{activation}'")
+
+    def encoder_parameters(self) -> Iterable[nn.Parameter]:
+        return self.layers.parameters()
+
+    def forward(self, x: torch.Tensor, *, return_all: bool = False):
+        activations = []
+        current = x
+        for layer in self.layers:
+            current = self.activation(layer(current))
             activations.append(current)
         return activations if return_all else activations[-1]

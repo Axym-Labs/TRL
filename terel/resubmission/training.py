@@ -10,6 +10,7 @@ from .model import LayerLocalEncoder
 from .objective import (
     LossCoefficients,
     direct_offdiagonal_covariance_loss,
+    offline_soft_sfa_loss,
     regularized_target_components,
     regularized_target_residual,
     residual_lateral_dynamics,
@@ -88,6 +89,19 @@ class EncoderTrainingSummary:
     covariance_state_rms_mean: tuple[float, ...] = ()
 
 
+@dataclass(frozen=True)
+class OfflineTrainingSummary:
+    epochs: int
+    steps: int
+    examples: int
+    seconds: float
+    final_loss: float
+    valid_temporal_pairs: int
+    layer_parameter_delta_l2: tuple[float, ...]
+    peak_device_memory_bytes: int
+    training_mode: str = "end_to_end_subsequence"
+
+
 @torch.no_grad()
 def lateral_proxy_diagnostics(
     z: torch.Tensor,
@@ -124,6 +138,27 @@ def lateral_proxy_diagnostics(
     }
 
 
+def postsynaptic_learning_state(
+    *,
+    preactivation: torch.Tensor,
+    activation: torch.Tensor,
+    activation_residual: torch.Tensor,
+    mode: str,
+) -> torch.Tensor:
+    """Map a target residual to the state multiplying presynaptic activity."""
+    exact = torch.autograd.grad(
+        activation,
+        preactivation,
+        grad_outputs=activation_residual,
+        retain_graph=True,
+    )[0].detach()
+    if mode == "exact":
+        return exact
+    if mode == "rectified":
+        return F.relu(exact).detach()
+    raise ValueError("postsynaptic_state_mode must be 'exact' or 'rectified'")
+
+
 def _layer_snapshots(model: LayerLocalEncoder):
     return [
         tuple(
@@ -146,6 +181,78 @@ def _layer_deltas(model: LayerLocalEncoder, before):
             squared += float(difference.square().sum())
         deltas.append(squared**0.5)
     return tuple(deltas)
+
+
+def train_offline_encoder(
+    *,
+    model,
+    optimizer: torch.optim.Optimizer,
+    dataset: TemporalTensorDataset,
+    epochs: int,
+    batch_size: int,
+    order_mode: str,
+    order_seed: int,
+    chunk_size: int,
+    coefficients: LossCoefficients,
+    variance_target: float,
+    device: torch.device,
+) -> OfflineTrainingSummary:
+    """Train TeReL-Offline on full subsequence graphs and a final-layer loss."""
+    if epochs <= 0 or batch_size <= 0:
+        raise ValueError("epochs and batch_size must be positive")
+    if batch_size < 2:
+        raise ValueError("TeReL-Offline subsequences require batch_size at least two")
+    model.to(device)
+    before = [
+        tuple(parameter.detach().cpu().clone() for parameter in layer.parameters())
+        for layer in model.layers
+    ]
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
+    start_time = time.perf_counter()
+    steps = 0
+    examples = 0
+    valid_pairs = 0
+    final_loss = float("nan")
+    for epoch in range(epochs):
+        for features, boundaries in encoder_batches(
+            dataset,
+            batch_size=batch_size,
+            order_mode=order_mode,
+            seed=order_seed + epoch,
+            chunk_size=chunk_size,
+        ):
+            metrics = offline_train_step(
+                model=model,
+                optimizer=optimizer,
+                x=features.to(device),
+                boundaries=boundaries.to(device),
+                coefficients=coefficients,
+                variance_target=variance_target,
+            )
+            steps += 1
+            examples += len(features)
+            valid_pairs += int(metrics["valid_temporal_pairs"])
+            final_loss = metrics["loss"]
+    deltas = []
+    for layer, old_parameters in zip(model.layers, before, strict=True):
+        squared = sum(
+            float((parameter.detach().cpu() - old).square().sum())
+            for parameter, old in zip(layer.parameters(), old_parameters, strict=True)
+        )
+        deltas.append(squared**0.5)
+    return OfflineTrainingSummary(
+        epochs=int(epochs),
+        steps=steps,
+        examples=examples,
+        seconds=time.perf_counter() - start_time,
+        final_loss=final_loss,
+        valid_temporal_pairs=valid_pairs,
+        layer_parameter_delta_l2=tuple(deltas),
+        peak_device_memory_bytes=(
+            int(torch.cuda.max_memory_allocated(device)) if device.type == "cuda" else 0
+        ),
+    )
 
 
 def train_local_encoder(
@@ -175,6 +282,9 @@ def train_local_encoder(
     residual_lateral_moment_normalization: str = "none",
     residual_lateral_coefficient: float = 0.5,
     residual_lateral_signal_offset: int = 0,
+    postsynaptic_state_mode: str = "exact",
+    lateral_matrix_mode: str = "two_matrix",
+    combined_lateral_state_weight: float = 0.5,
 ) -> EncoderTrainingSummary:
     """Train a TeReL encoder and return the fidelity/compute audit record."""
     if epochs <= 0:
@@ -263,6 +373,9 @@ def train_local_encoder(
                     ),
                     residual_lateral_coefficient=residual_lateral_coefficient,
                     residual_lateral_signal_offset=residual_lateral_signal_offset,
+                    postsynaptic_state_mode=postsynaptic_state_mode,
+                    lateral_matrix_mode=lateral_matrix_mode,
+                    combined_lateral_state_weight=combined_lateral_state_weight,
                 )
                 for layer_index in range(len(model.layers)):
                     prefix = f"layer_{layer_index}/lateral_proxy_"
@@ -380,6 +493,35 @@ def train_local_encoder(
     )
 
 
+def offline_train_step(
+    *,
+    model: LayerLocalEncoder,
+    optimizer: torch.optim.Optimizer,
+    x: torch.Tensor,
+    boundaries: torch.Tensor,
+    coefficients: LossCoefficients,
+    variance_target: float,
+) -> dict[str, float]:
+    """Backpropagate a final-layer soft-SFA loss through a full subsequence."""
+    if getattr(model, "normalization", "none") != "none":
+        raise ValueError("TeReL-Offline does not use normalization layers")
+    model.train()
+    optimizer.zero_grad(set_to_none=True)
+    representation = model(x)
+    loss, metrics = offline_soft_sfa_loss(
+        representation,
+        boundaries=boundaries,
+        coefficients=coefficients,
+        variance_target=variance_target,
+    )
+    loss.backward()
+    optimizer.step()
+    return {
+        "loss": float(loss.detach()),
+        **{name: float(value) for name, value in metrics.items()},
+    }
+
+
 def local_train_step(
     *,
     model: LayerLocalEncoder,
@@ -403,6 +545,9 @@ def local_train_step(
     residual_lateral_moment_normalization: str = "none",
     residual_lateral_coefficient: float = 0.5,
     residual_lateral_signal_offset: int = 0,
+    postsynaptic_state_mode: str = "exact",
+    lateral_matrix_mode: str = "two_matrix",
+    combined_lateral_state_weight: float = 0.5,
 ) -> dict[str, float]:
     """Apply one optimizer step using independent per-layer TeReL losses."""
     model.train()
@@ -438,6 +583,17 @@ def local_train_step(
         )
     if residual_lateral_signal_offset not in {0, 1}:
         raise ValueError("residual_lateral_signal_offset must be zero or one")
+    if lateral_matrix_mode not in {
+        "two_matrix",
+        "representation_shared",
+        "state_shared",
+        "combined",
+    }:
+        raise ValueError("unsupported lateral_matrix_mode")
+    if not 0.0 <= combined_lateral_state_weight <= 1.0:
+        raise ValueError("combined_lateral_state_weight must lie in [0, 1]")
+    if not residual_mode and lateral_matrix_mode != "two_matrix":
+        raise ValueError("one-matrix modes are defined only for residual-state TeReL")
     layer_details = model.forward_local_details(x, stop_after=active_layer)
     losses = []
     layer_metrics = []
@@ -488,12 +644,12 @@ def local_train_step(
                 variance_target=variance_target,
                 lateral_reference=lateral_reference,
             )
-            base_neuron_state = torch.autograd.grad(
-                z,
-                preactivation,
-                grad_outputs=activation_residual,
-                retain_graph=True,
-            )[0].detach()
+            base_neuron_state = postsynaptic_learning_state(
+                preactivation=preactivation,
+                activation=z,
+                activation_residual=activation_residual,
+                mode=postsynaptic_state_mode,
+            )
             component_states = {}
             if audit_residual_components:
                 components = regularized_target_components(
@@ -517,9 +673,14 @@ def local_train_step(
                     for name, component in components.items()
                 }
             if residual_lateral_signal_offset == 0:
+                inhibition_matrix = (
+                    state.ensure_residual_lateral()
+                    if lateral_matrix_mode == "two_matrix"
+                    else state.lateral
+                )
                 neuron_state = residual_lateral_dynamics(
                     base_state=base_neuron_state,
-                    lateral=state.ensure_residual_lateral(),
+                    lateral=inhibition_matrix,
                     coefficient=residual_lateral_coefficient,
                     steps=residual_lateral_steps,
                     step_size=residual_lateral_step_size,
@@ -536,7 +697,11 @@ def local_train_step(
                 neuron_state = residual_lateral_offset_correction(
                     base_state=base_neuron_state,
                     previous_state=previous_neuron_state,
-                    lateral=state.ensure_residual_lateral(),
+                    lateral=(
+                        state.ensure_residual_lateral()
+                        if lateral_matrix_mode == "two_matrix"
+                        else state.lateral
+                    ),
                     coefficient=residual_lateral_coefficient,
                     step_size=residual_lateral_step_size,
                     pair_valid=valid,
@@ -632,13 +797,39 @@ def local_train_step(
             if residual_lateral_moment_normalization == "features"
             else 1.0
         )
-        state.update(z)
+        shared_lateral_moment = None
+        if residual_lateral_values is not None and lateral_matrix_mode in {
+            "state_shared",
+            "combined",
+        }:
+            values = residual_lateral_values.detach()
+            state_moment = moment_scale * values.T @ values / values.shape[0]
+            if not residual_lateral_include_diagonal:
+                state_moment.fill_diagonal_(0.0)
+            if lateral_matrix_mode == "state_shared":
+                shared_lateral_moment = state_moment
+            else:
+                centered = z.detach() - state.mean.detach()
+                representation_moment = centered.T @ centered / z.shape[0]
+                representation_moment.fill_diagonal_(0.0)
+                weight = combined_lateral_state_weight
+                shared_lateral_moment = (
+                    1.0 - weight
+                ) * representation_moment + weight * state_moment
+        state.update(
+            z,
+            update_lateral=lateral_matrix_mode
+            in {"two_matrix", "representation_shared"},
+        )
         if residual_lateral_values is not None:
-            state.update_residual_lateral(
-                residual_lateral_values,
-                include_diagonal=residual_lateral_include_diagonal,
-                moment_scale=moment_scale,
-            )
+            if lateral_matrix_mode == "two_matrix":
+                state.update_residual_lateral(
+                    residual_lateral_values,
+                    include_diagonal=residual_lateral_include_diagonal,
+                    moment_scale=moment_scale,
+                )
+            elif shared_lateral_moment is not None:
+                state.update_lateral_moment(shared_lateral_moment)
             if residual_lateral_signal_offset == 1:
                 state.update_previous_neuron_state(residual_lateral_values)
 
