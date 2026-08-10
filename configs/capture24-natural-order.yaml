@@ -1,0 +1,50 @@
+protocol_version: capture24-natural-order-v1
+selection_split: validation
+evaluation_split: test
+dataset:
+  name: CAPTURE-24
+  window_seconds: 10
+  feature_summary: axis-and-magnitude mean/std/min/max
+  train_subjects: [1, 2, 3, 4, 5, 6, 7, 8]
+  validation_subjects: [9, 10, 11, 12]
+  heldout_subjects:
+    [102, 103, 104, 105, 106, 107, 108, 109, 110, 111,
+     112, 113, 114, 115, 116, 117, 118, 119, 120, 121,
+     122, 123, 124, 125, 126, 127, 128, 129, 130, 131,
+     132, 133, 134, 135, 136, 137, 138, 139, 140, 141,
+     142, 143, 144, 145, 146, 147, 148, 149, 150, 151]
+num_classes: 6
+confirmatory_seeds: [201, 202, 203, 204, 205]
+conditions: [chronological, within-participant-shuffled, random]
+encoder:
+  method: terel_residual
+  hidden_dims: [128, 64]
+  activation: leaky_relu
+  normalization: none
+  training_mode: joint
+  augmentation: none
+  epochs: 2
+  batch_size: 1
+  chunk_size: 16
+  optimizer: plain_sgd
+  learning_rate: 0.00001934669330872145
+  weight_decay: 0.0
+  similarity_coefficient: 2.0557344244809137
+  variance_coefficient: 3.0935554386629462
+  covariance_coefficient: 0.036157338275124226
+  variance_target: 1.0602982596796813
+  statistics_momentum: 0.995
+  lateral_momentum: 0.999
+  residual_lateral_rule: dual_inhibitory
+  residual_lateral_coefficient: 0.2950705362832128
+  residual_lateral_steps: 1
+  residual_lateral_step_size: 0.1
+  residual_lateral_include_diagonal: true
+  residual_lateral_moment_normalization: features
+probe:
+  epochs: 40
+  batch_size: 2048
+  optimizer: adamw
+  learning_rate: 0.003
+  weight_decay: 0.0001
+  readout: all

@@ -24,6 +24,18 @@ WISDM_ACTIVITY_CODES = tuple("ABCDEFGHIJKLMOPQRS")
 WISDM_TRAIN_SUBJECTS = tuple(range(1600, 1631))
 WISDM_VALIDATION_SUBJECTS = tuple(range(1631, 1641))
 WISDM_HELDOUT_SUBJECTS = tuple(range(1641, 1651))
+CAPTURE24_LABEL_COLUMN = "label:Willetts2018"
+CAPTURE24_LABELS = (
+    "bicycling",
+    "mixed",
+    "sit-stand",
+    "sleep",
+    "vehicle",
+    "walking",
+)
+CAPTURE24_TRAIN_SUBJECTS = tuple(range(1, 9))
+CAPTURE24_VALIDATION_SUBJECTS = tuple(range(9, 13))
+CAPTURE24_HELDOUT_SUBJECTS = tuple(range(102, 152))
 
 
 @dataclass(frozen=True)
@@ -337,6 +349,174 @@ def load_mnist_protocol(
         metadata={
             **splits.metadata,
             "source_sha256": {path.name: _sha256(path) for path in raw_files},
+        },
+    )
+
+
+def _prepare_capture24_subject(
+    path: Path,
+    *,
+    label_map: dict[str, str],
+    window_seconds: int,
+):
+    if window_seconds <= 0:
+        raise ValueError("CAPTURE-24 window_seconds must be positive")
+    frame = pd.read_csv(
+        path,
+        usecols=("time", "x", "y", "z", "annotation"),
+        parse_dates=["time"],
+        dtype={
+            "x": "float32",
+            "y": "float32",
+            "z": "float32",
+            "annotation": "string",
+        },
+    ).set_index("time")
+    frame["magnitude"] = np.sqrt(
+        frame["x"] * frame["x"]
+        + frame["y"] * frame["y"]
+        + frame["z"] * frame["z"]
+    )
+    frequency = f"{window_seconds}s"
+    numeric = frame[["x", "y", "z", "magnitude"]].resample(
+        frequency, origin="start"
+    ).agg(("mean", "std", "min", "max"))
+    annotation = frame["annotation"].resample(frequency, origin="start").first()
+    labels = annotation.astype("string").map(label_map)
+    valid = labels.notna() & numeric.notna().all(axis=1)
+    numeric = numeric.loc[valid]
+    labels = labels.loc[valid]
+    timestamps = numeric.index.to_numpy()
+    boundaries = np.zeros(len(numeric), dtype=bool)
+    if len(boundaries):
+        boundaries[0] = True
+        gaps_ms = np.diff(timestamps).astype("timedelta64[ms]").astype(np.int64)
+        boundaries[1:] = gaps_ms > int(window_seconds * 1_050)
+    return (
+        numeric.to_numpy(dtype=np.float32),
+        np.asarray(
+            [CAPTURE24_LABELS.index(value) for value in labels], dtype=np.int64
+        ),
+        boundaries,
+    )
+
+
+def load_capture24_protocol(
+    root,
+    *,
+    access_heldout: bool = False,
+    train_subjects=CAPTURE24_TRAIN_SUBJECTS,
+    validation_subjects=CAPTURE24_VALIDATION_SUBJECTS,
+    heldout_subjects=CAPTURE24_HELDOUT_SUBJECTS,
+    window_seconds: int = 10,
+) -> DatasetSplits:
+    """Load the participant-disjoint CAPTURE-24 protocol.
+
+    Held-out participant files are neither opened nor hashed unless
+    ``access_heldout`` is explicitly true.
+    """
+    root = Path(root)
+    roles = tuple(
+        tuple(int(subject) for subject in subjects)
+        for subjects in (train_subjects, validation_subjects, heldout_subjects)
+    )
+    train_subjects, validation_subjects, heldout_subjects = roles
+    if any(
+        set(left) & set(right)
+        for left, right in (
+            (roles[0], roles[1]),
+            (roles[0], roles[2]),
+            (roles[1], roles[2]),
+        )
+    ):
+        raise ValueError("CAPTURE-24 participant roles must be disjoint")
+
+    dictionary_path = root / "annotation-label-dictionary.csv"
+    dictionary = pd.read_csv(dictionary_path)
+    if CAPTURE24_LABEL_COLUMN not in dictionary:
+        raise ValueError(
+            f"CAPTURE-24 dictionary lacks '{CAPTURE24_LABEL_COLUMN}'"
+        )
+    label_map = dict(
+        zip(
+            dictionary["annotation"],
+            dictionary[CAPTURE24_LABEL_COLUMN],
+            strict=True,
+        )
+    )
+    loaded_subjects = (
+        (*train_subjects, *validation_subjects, *heldout_subjects)
+        if access_heldout
+        else (*train_subjects, *validation_subjects)
+    )
+    files = {
+        subject: root / f"P{subject:03d}.csv.gz" for subject in loaded_subjects
+    }
+    missing = [subject for subject, path in files.items() if not path.is_file()]
+    if missing:
+        raise FileNotFoundError(f"Missing CAPTURE-24 participant files: {missing}")
+    records = {
+        subject: _prepare_capture24_subject(
+            path,
+            label_map=label_map,
+            window_seconds=window_seconds,
+        )
+        for subject, path in files.items()
+    }
+
+    def concatenate(subjects):
+        arrays = [records[subject] for subject in subjects]
+        return tuple(np.concatenate(parts) for parts in zip(*arrays, strict=True))
+
+    train_arrays = concatenate(train_subjects)
+    validation_arrays = concatenate(validation_subjects)
+    mean, scale = fit_standardizer(train_arrays[0])
+
+    def dataset(arrays):
+        features, labels, boundaries = arrays
+        return TemporalTensorDataset(
+            features=torch.from_numpy(apply_standardizer(features, mean, scale)).to(
+                torch.float32
+            ),
+            labels=torch.from_numpy(labels).to(torch.long),
+            boundaries=torch.from_numpy(boundaries).to(torch.bool),
+        )
+
+    train = dataset(train_arrays)
+    validation = dataset(validation_arrays)
+    test = validation
+    test_subject_rows = {}
+    if access_heldout:
+        test = dataset(concatenate(heldout_subjects))
+        test_subject_rows = {
+            subject: len(records[subject][0]) for subject in heldout_subjects
+        }
+    return DatasetSplits(
+        train=train,
+        validation=validation,
+        test=test,
+        metadata={
+            "dataset": "CAPTURE-24",
+            "window_seconds": int(window_seconds),
+            "feature_summary": "axis-and-magnitude mean/std/min/max",
+            "activity_classes": list(CAPTURE24_LABELS),
+            "train_subjects": list(train_subjects),
+            "validation_subjects": list(validation_subjects),
+            "heldout_subjects": list(heldout_subjects),
+            "train_subject_rows": {
+                subject: len(records[subject][0]) for subject in train_subjects
+            },
+            "validation_subject_rows": {
+                subject: len(records[subject][0]) for subject in validation_subjects
+            },
+            "test_subject_rows": test_subject_rows,
+            "heldout_subjects_accessed": bool(access_heldout),
+            "feature_mean": mean.tolist(),
+            "feature_scale": scale.tolist(),
+            "source_sha256": {
+                dictionary_path.name: _sha256(dictionary_path),
+                **{path.name: _sha256(path) for path in files.values()},
+            },
         },
     )
 

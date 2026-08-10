@@ -1,0 +1,51 @@
+{
+  "dataset": "CAPTURE-24",
+  "heldout_subjects_accessed": false,
+  "paired_chronology_minus_random": {
+    "ci95_high": 0.00288327932776566,
+    "ci95_low": -0.0004668262245628701,
+    "mean_difference": 0.001208226551601388,
+    "sample_sd": 0.001349038692099835
+  },
+  "paired_chronology_minus_shuffled": {
+    "ci95_high": 0.001385027864502865,
+    "ci95_low": 0.0003093936042265363,
+    "mean_difference": 0.0008472107343647006,
+    "sample_sd": 0.0004331422437279248
+  },
+  "records": [
+    {
+      "chronological_macro_f1": 0.33977851337184733,
+      "random_macro_f1": 0.3397939017247649,
+      "seed": 101,
+      "shuffled_macro_f1": 0.3387918210700534
+    },
+    {
+      "chronological_macro_f1": 0.33366248883431826,
+      "random_macro_f1": 0.33061218069867343,
+      "seed": 102,
+      "shuffled_macro_f1": 0.33322989358576627
+    },
+    {
+      "chronological_macro_f1": 0.3430545935416685,
+      "random_macro_f1": 0.34149203478064,
+      "seed": 103,
+      "shuffled_macro_f1": 0.34266951724733397
+    },
+    {
+      "chronological_macro_f1": 0.33583908254537537,
+      "random_macro_f1": 0.3360634064358412,
+      "seed": 104,
+      "shuffled_macro_f1": 0.33481524954244674
+    },
+    {
+      "chronological_macro_f1": 0.32733674252037637,
+      "random_macro_f1": 0.32566876441565934,
+      "seed": 105,
+      "shuffled_macro_f1": 0.32592888569616196
+    }
+  ],
+  "selected_configuration_id": "capture24-natural-order-v1",
+  "selection_complete": true,
+  "selection_rule": "The configuration advances because its five-seed mean chronology effect is positive with a paired 95% interval excluding zero, its mean chronological macro-F1 exceeds random features, and all representations are finite and noncollapsed. No held-out participant file was opened during selection."
+}
