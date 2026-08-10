@@ -222,6 +222,15 @@ def build_supplement_archive(
             / "workspace/terel-paper-internal/resubmission-1/artifacts/"
             "confirmatory-manifest.json"
         ): "source/ARTIFACT_README.md",
+        str(repository / "configs/resubmission/confirmatory-matrix-v2.yaml"): (
+            "artifacts/batched-reference-manifest.json"
+        ),
+        str(
+            repository / "configs/resubmission/review-patch-confirmatory-matrix-v3.yaml"
+        ): "artifacts/local-comparator-manifest.json",
+        str(
+            repository / "configs/resubmission/latest-review-confirmatory-matrix-v4.yaml"
+        ): "artifacts/normalization-control-manifest.json",
         "paper-internal/resubmission-1/artifacts/confirmatory-manifest-v2.json": (
             "artifacts/batched-reference-manifest.json"
         ),
