@@ -71,9 +71,20 @@ def test_supplement_archive_includes_tracked_code_paper_and_artifacts(tmp_path):
         assert "TeReL-supplement/paper/figures/result.py" in names
         assert "TeReL-supplement/paper/appendix/old.tex" not in names
         packaged = archive.read("TeReL-supplement/artifacts/result.json").decode()
+        redaction_manifest = json.loads(
+            archive.read("TeReL-supplement/redaction-manifest.json")
+        )
     assert str(private_source) not in packaged
     assert json.loads(packaged)["path"] == "artifacts/runs"
     assert json.loads(packaged)["accuracy"] == 0.97
+    assert redaction_manifest["schema_version"] == 2
+    result_entry = next(
+        item
+        for item in redaction_manifest["files"]
+        if item["path"] == "artifacts/result.json"
+    )
+    assert result_entry["content_redacted"] is True
+    assert "path_redacted" not in result_entry
 
 
 def test_supplement_archive_anonymizes_paper_template_identifiers(tmp_path):

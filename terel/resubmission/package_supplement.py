@@ -297,7 +297,7 @@ def build_supplement_archive(
                 "source_kind": source_kind,
                 "source_sha256": _sha256(original),
                 "packaged_sha256": _sha256(packaged),
-                "path_redacted": redacted,
+                "content_redacted": redacted,
             }
         )
 
@@ -319,7 +319,7 @@ def build_supplement_archive(
         )
 
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "description": (
             "Anonymized portable TeReL supplement. Path and paper-template "
             "identifier redactions are identified by paired source and packaged "
