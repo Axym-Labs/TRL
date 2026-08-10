@@ -37,6 +37,7 @@ DEFAULT_ARTIFACT_PATHS = (
     "objective-mechanism-protocol.md",
     "objective-mechanism-results",
     "local-comparator-analysis.json",
+    "local-comparator-manifest.json",
     "local-comparator-selection-analysis.json",
     "local-comparator-final-results",
     "local-comparator-validation-results",
@@ -206,12 +207,57 @@ def build_supplement_archive(
     )
     workspace_root = repository.parents[1]
     replacements = {
+        str(
+            workspace_root
+            / "workspace/terel-paper-internal/resubmission-1/artifacts/"
+            "review-patch-confirmatory-manifest-v3.json"
+        ): "artifacts/local-comparator-manifest.json",
+        str(
+            workspace_root
+            / "workspace/terel-paper-internal/resubmission-1/artifacts/"
+            "latest-review-confirmatory-manifest-v4.json"
+        ): "artifacts/normalization-control-manifest.json",
+        str(
+            workspace_root
+            / "workspace/terel-paper-internal/resubmission-1/artifacts/"
+            "confirmatory-manifest.json"
+        ): "source/ARTIFACT_README.md",
         "paper-internal/resubmission-1/artifacts/confirmatory-manifest-v2.json": (
             "artifacts/batched-reference-manifest.json"
         ),
         "./configs/resubmission/confirmatory-matrix-v2.yaml": (
             "artifacts/batched-reference-manifest.json"
         ),
+        "./configs/resubmission/review-patch-confirmatory-matrix-v3.yaml": (
+            "artifacts/local-comparator-manifest.json"
+        ),
+        "./configs/resubmission/latest-review-confirmatory-matrix-v4.yaml": (
+            "artifacts/normalization-control-manifest.json"
+        ),
+        "The matrix was fully resolved from validation-only recovery.": (
+            "The matrix was fully resolved on validation data."
+        ),
+        "The treatment is fixed a priori by the latest review:": (
+            "The normalization control was fixed a priori:"
+        ),
+        "without changing or rerunning the v2 headline matrix": (
+            "without changing or rerunning the final comparison matrix"
+        ),
+        "TeReL post-confirmation mechanism audit v2": (
+            "TeReL objective mechanism audit"
+        ),
+        (
+            "Frozen after the competitive v2 matrix completed and before any "
+            "mechanism-audit run."
+        ): "Frozen before any objective-mechanism run.",
+        "The recovered canonical TeReL validation records": (
+            "The selected TeReL-Offline validation records"
+        ),
+        "under the recovered batch-normalized protocol": (
+            "under the selected batch-normalized protocol"
+        ),
+        "canonical-recovered-bn": "terel-offline",
+        "Canonical recovered TeReL": "Selected TeReL-Offline",
         "axym-publication": "paper-template",
         "Axym publication": "included publication",
         "Axym": "Paper",
