@@ -116,6 +116,50 @@ def test_supplement_archive_anonymizes_paper_template_identifiers(tmp_path):
     assert "\\usepackage{paper-template}" in paper_text
 
 
+def test_supplement_archive_uses_stable_comparator_provenance_names(tmp_path):
+    repository = tmp_path / "workspace" / "TeReL"
+    artifacts = tmp_path / "artifacts"
+    repository.mkdir(parents=True)
+    artifacts.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    (repository / "module.py").write_text("# source\n")
+    subprocess.run(["git", "add", "."], cwd=repository, check=True)
+    old_manifest = (
+        tmp_path
+        / "workspace/terel-paper-internal/resubmission-1/artifacts/"
+        "review-patch-confirmatory-manifest-v3.json"
+    )
+    old_matrix = repository / "configs/resubmission/review-patch-confirmatory-matrix-v3.yaml"
+    (artifacts / "result.json").write_text(
+        json.dumps(
+            {
+                "manifest_path": str(old_manifest),
+                "matrix_path": str(old_matrix),
+                "selection_policy": (
+                    "This control was fixed without changing or rerunning the v2 "
+                    "headline matrix."
+                ),
+            }
+        )
+    )
+    output = tmp_path / "supplement.zip"
+
+    build_supplement_archive(
+        repository=repository,
+        artifact_root=artifacts,
+        artifact_paths=("result.json",),
+        output_path=output,
+    )
+
+    with zipfile.ZipFile(output) as archive:
+        packaged = archive.read("TeReL-supplement/artifacts/result.json").decode()
+    parsed = json.loads(packaged)
+    assert parsed["manifest_path"] == "artifacts/local-comparator-manifest.json"
+    assert parsed["matrix_path"] == "artifacts/local-comparator-manifest.json"
+    assert "v2" not in parsed["selection_policy"]
+    assert "final comparison matrix" in parsed["selection_policy"]
+
+
 def test_supplement_archive_excludes_tracked_development_diary(tmp_path):
     repository = tmp_path / "workspace" / "code"
     artifacts = tmp_path / "artifacts"
