@@ -3,7 +3,15 @@ import pytest
 from terel.resubmission.canonical_online_analysis import analyze_canonical_online
 
 
-def _record(seed, accuracy, rank, *, base=(0.6, 0.7), state=(0.5, 0.4)):
+def _record(
+    seed,
+    accuracy,
+    rank,
+    *,
+    base=(0.6, 0.7),
+    residual_lateral_steps=1,
+    state=(0.5, 0.4),
+):
     return {
         "seed": seed,
         "method": "terel_residual",
@@ -18,7 +26,14 @@ def _record(seed, accuracy, rank, *, base=(0.6, 0.7), state=(0.5, 0.4)):
             "parameter_numel": 10,
             "examples": 100,
         },
-        "encoder_config": {"hidden_dims": [3, 2]},
+        "encoder_config": {
+            "batch_size": 1,
+            "gradient_accumulation_steps": 1,
+            "hidden_dims": [3, 2],
+            "optimizer": "plain_sgd",
+            "residual_lateral_steps": residual_lateral_steps,
+            "training_mode": "joint",
+        },
         "resource_accounting": {"optimizer_state_bytes": 0},
     }
 
@@ -26,7 +41,12 @@ def _record(seed, accuracy, rank, *, base=(0.6, 0.7), state=(0.5, 0.4)):
 def test_canonical_analysis_separates_final_and_matched_validation_evidence():
     final = [_record(seed, 0.95 + seed / 10000, 140 + seed / 10) for seed in range(1, 6)]
     inhibited = [_record(seed, value, 145 + seed) for seed, value in zip((101, 102, 103), (0.96, 0.95, 0.955), strict=True)]
-    reference = [_record(seed, value, 140 + seed) for seed, value in zip((101, 102, 103), (0.94, 0.93, 0.935), strict=True)]
+    reference = [
+        _record(seed, value, 140 + seed, residual_lateral_steps=0)
+        for seed, value in zip(
+            (101, 102, 103), (0.94, 0.93, 0.935), strict=True
+        )
+    ]
 
     analysis = analyze_canonical_online(final, inhibited, reference)
 
@@ -42,7 +62,23 @@ def test_canonical_analysis_separates_final_and_matched_validation_evidence():
 def test_canonical_analysis_requires_matched_validation_seeds():
     final = [_record(seed, 0.95, 140) for seed in range(1, 6)]
     inhibited = [_record(seed, 0.95, 145) for seed in (101, 102, 103)]
-    reference = [_record(seed, 0.94, 140) for seed in (101, 102, 104)]
+    reference = [
+        _record(seed, 0.94, 140, residual_lateral_steps=0)
+        for seed in (101, 102, 104)
+    ]
 
     with pytest.raises(ValueError, match="matched seeds"):
+        analyze_canonical_online(final, inhibited, reference)
+
+
+def test_canonical_analysis_rejects_noncanonical_encoder_records():
+    final = [_record(seed, 0.95, 140) for seed in range(1, 6)]
+    inhibited = [_record(seed, 0.95, 145) for seed in (101, 102, 103)]
+    reference = [
+        _record(seed, 0.94, 140, residual_lateral_steps=0)
+        for seed in (101, 102, 103)
+    ]
+    final[0]["encoder_config"]["optimizer"] = "adamw"
+
+    with pytest.raises(ValueError, match="canonical encoder optimizer=plain_sgd"):
         analyze_canonical_online(final, inhibited, reference)

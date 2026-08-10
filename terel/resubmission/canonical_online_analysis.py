@@ -39,7 +39,7 @@ def _layer_summaries(records, field) -> list[dict]:
     ]
 
 
-def _validate_records(records, *, expected_count, role):
+def _validate_records(records, *, expected_count, residual_lateral_steps, role):
     if len(records) != expected_count:
         raise ValueError(f"{role} requires {expected_count} records")
     seeds = [int(record["seed"]) for record in records]
@@ -47,17 +47,38 @@ def _validate_records(records, *, expected_count, role):
         raise ValueError(f"{role} requires distinct seeds")
     if any(record.get("method") != "terel_residual" for record in records):
         raise ValueError(f"{role} records must use samplewise TeReL")
+    required_encoder_fields = {
+        "batch_size": 1,
+        "gradient_accumulation_steps": 1,
+        "optimizer": "plain_sgd",
+        "residual_lateral_steps": residual_lateral_steps,
+        "training_mode": "joint",
+    }
+    for field, expected in required_encoder_fields.items():
+        if any(record.get("encoder_config", {}).get(field) != expected for record in records):
+            raise ValueError(f"{role} records require canonical encoder {field}={expected}")
     return seeds
 
 
 def analyze_canonical_online(final_records, inhibited_records, reference_records) -> dict:
     """Combine final evidence with the matched validation mechanism contrast."""
-    final_seeds = _validate_records(final_records, expected_count=5, role="final evaluation")
+    final_seeds = _validate_records(
+        final_records,
+        expected_count=5,
+        residual_lateral_steps=1,
+        role="final evaluation",
+    )
     inhibited_seeds = _validate_records(
-        inhibited_records, expected_count=3, role="inhibited validation"
+        inhibited_records,
+        expected_count=3,
+        residual_lateral_steps=1,
+        role="inhibited validation",
     )
     reference_seeds = _validate_records(
-        reference_records, expected_count=3, role="reference validation"
+        reference_records,
+        expected_count=3,
+        residual_lateral_steps=0,
+        role="reference validation",
     )
     if inhibited_seeds != reference_seeds:
         raise ValueError("validation comparison requires matched seeds")
@@ -70,6 +91,25 @@ def analyze_canonical_online(final_records, inhibited_records, reference_records
         for record in final_records
     ):
         raise ValueError("final records must use the same hidden dimensions")
+    resource_fields = (
+        "auxiliary_parameter_numel",
+        "causal_dynamic_state_numel",
+        "examples",
+        "optimizer_steps",
+        "parameter_numel",
+    )
+    for field in resource_fields:
+        if any(
+            record["encoder_training"][field] != training[field]
+            for record in final_records
+        ):
+            raise ValueError(f"final records must agree on {field}")
+    if any(
+        record["resource_accounting"]["optimizer_state_bytes"]
+        != resource["optimizer_state_bytes"]
+        for record in final_records
+    ):
+        raise ValueError("final records must agree on optimizer state")
     dense_cells = int(training["examples"]) * sum(width * width for width in hidden_dims)
     inhibited_accuracy = np.asarray(
         [record["metrics"]["accuracy"] for record in inhibited_records]
