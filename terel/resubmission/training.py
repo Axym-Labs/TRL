@@ -144,14 +144,22 @@ def postsynaptic_learning_state(
     activation: torch.Tensor,
     activation_residual: torch.Tensor,
     mode: str,
+    activation_kind: str | None = None,
 ) -> torch.Tensor:
     """Map a target residual to the state multiplying presynaptic activity."""
-    exact = torch.autograd.grad(
-        activation,
-        preactivation,
-        grad_outputs=activation_residual,
-        retain_graph=True,
-    )[0].detach()
+    if activation_kind == "relu":
+        exact = (
+            activation_residual * (preactivation > 0).to(activation_residual.dtype)
+        ).detach()
+    elif activation_kind is None:
+        exact = torch.autograd.grad(
+            activation,
+            preactivation,
+            grad_outputs=activation_residual,
+            retain_graph=True,
+        )[0].detach()
+    else:
+        raise ValueError(f"Unsupported explicit activation derivative '{activation_kind}'")
     if mode == "exact":
         return exact
     if mode == "rectified":
@@ -652,6 +660,9 @@ def local_train_step(
                 activation=z,
                 activation_residual=activation_residual,
                 mode=postsynaptic_state_mode,
+                activation_kind=(
+                    "relu" if model.activation_name == "relu" else None
+                ),
             )
             component_states = {}
             if audit_residual_components:

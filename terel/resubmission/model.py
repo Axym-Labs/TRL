@@ -104,6 +104,7 @@ class LayerLocalEncoder(nn.Module):
             self.activation = nn.Identity()
         else:
             raise ValueError(f"Unsupported activation '{activation}'")
+        self.activation_name = activation
         self.states = nn.ModuleList(
             TeReLState(width, statistics_momentum, lateral_momentum)
             for width in hidden_dims

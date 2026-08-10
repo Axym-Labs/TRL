@@ -49,6 +49,26 @@ def test_relu_postsynaptic_state_matches_the_exact_preactivation_gradient():
     assert state.requires_grad is False
 
 
+def test_relu_postsynaptic_state_does_not_require_an_autograd_graph():
+    """A canonical ReLU neuron must compute its local state explicitly."""
+    preactivation = torch.tensor([[-1.0, 0.0, 2.0]])
+    activation = torch.relu(preactivation)
+    target_residual = torch.tensor([[-3.0, 5.0, -4.0]])
+
+    try:
+        state = postsynaptic_learning_state(
+            preactivation=preactivation,
+            activation=activation,
+            activation_residual=target_residual,
+            mode="exact",
+            activation_kind="relu",
+        )
+    except (RuntimeError, TypeError) as error:
+        pytest.fail(f"ReLU state unexpectedly required an autograd graph: {error}")
+
+    assert torch.equal(state, torch.tensor([[0.0, 0.0, -4.0]]))
+
+
 def test_rectified_postsynaptic_state_is_explicitly_not_the_exact_gradient():
     preactivation = torch.tensor([[1.0, 2.0]], requires_grad=True)
     activation = torch.relu(preactivation)
