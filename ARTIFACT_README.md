@@ -78,9 +78,10 @@ analysis           fc98d9073064ae78e7e8bd93be34b5484620d7d4735c29ffdd9cfc8af20ac
 
 ## Anonymous supplement
 
-The package contains only the canonical samplewise records and the current
-scientific comparators. It excludes discarded configurations, partial ledgers,
-old figures, development analyses, and natural-stream premise tests.
+The package contains the canonical samplewise records and complete executed
+bundles for the current scientific comparators. It excludes discarded
+configuration bundles, partial ledgers, old figures, development analyses, and
+natural-stream premise tests.
 
 ```bash
 uv run python -m terel.resubmission.package_supplement \
