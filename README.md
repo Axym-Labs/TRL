@@ -78,8 +78,8 @@ At width `D`, the canonical path stores three causal scalars per neuron: the
 preceding activation, running mean, and running variance. One validity flag is
 stored per layer. The representation and residual-state operators are two
 `D × D` auxiliary parameter matrices; they are weights, not temporal state.
-For the 784→512→256 encoder this is 2,304 per-neuron scalars and two layer
-flags, 655,360 auxiliary parameters, and 533,248 feedforward parameters. Plain
+For the 784→512→256 encoder this is 2,304 causal neuron scalars in total and
+two layer flags, 655,360 auxiliary parameters, and 533,248 feedforward parameters. Plain
 SGD adds no optimizer state. Each observation applies the two auxiliary
 operators once and forms two rank-one updates.
 
