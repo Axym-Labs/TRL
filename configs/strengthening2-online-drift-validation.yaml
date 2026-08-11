@@ -1,0 +1,14 @@
+schema_version: 1
+evaluation_split: validation
+base_config: configs/strengthening2-mnist-visual-evidence.yaml
+checkpoint: >-
+  /home/davwis/main/workspace/terel-paper-internal/strengthening-2/artifacts/visual-evidence/mnist/checkpoint.pt
+learning_rate_scales: [0.0, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0]
+block_size: 1000
+probe:
+  epochs: 60
+  batch_size: 2048
+  optimizer: adamw
+  learning_rate: 0.003
+  weight_decay: 0.0001
+  readout: all
