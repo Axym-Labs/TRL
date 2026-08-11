@@ -1,0 +1,42 @@
+dataset: mnist
+data_root: /home/davwis/main/data/mnist
+num_classes: 10
+seed: 1101
+neuron_selection_seed: 2718
+neuron_count: 4
+state_observations: 2048
+geometry_selection_seed: 31415
+geometry_observations: 3000
+representation_batch_size: 2048
+
+encoder:
+  method: terel_residual
+  hidden_dims: [512, 256]
+  activation: relu
+  normalization: none
+  training_mode: joint
+  epochs: 2
+  batch_size: 1
+  order_mode: class_chunks
+  chunk_size: 16
+  optimizer: plain_sgd
+  learning_rate: 0.013870266872900201
+  weight_decay: 0.000001
+  similarity_coefficient: 1.0
+  variance_coefficient: 3.001981471213246
+  covariance_coefficient: 0.6061334936982908
+  variance_target: 1.0
+  statistics_momentum: 0.99
+  lateral_momentum: 0.995
+  residual_lateral_rule: dual_inhibitory
+  residual_lateral_coefficient: 0.5749502865863861
+  residual_lateral_steps: 1
+  residual_lateral_step_size: 0.1
+  residual_lateral_include_diagonal: true
+  residual_lateral_moment_normalization: none
+  residual_lateral_signal_offset: 0
+  postsynaptic_state_mode: exact
+  lateral_matrix_mode: combined
+  combined_lateral_state_weight: 0.5911099660677379
+  temporal_term_enabled: true
+  inference_mode: offline

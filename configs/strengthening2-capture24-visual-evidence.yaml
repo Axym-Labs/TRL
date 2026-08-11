@@ -1,0 +1,42 @@
+dataset: capture24-cache
+data_root: /home/davwis/main/workspace/terel-paper-internal/canonical-online-learning/artifacts/capture24-development-premise.npz
+num_classes: 6
+seed: 1101
+neuron_selection_seed: 2718
+neuron_count: 4
+state_observations: 2048
+geometry_selection_seed: 31415
+geometry_observations: 3000
+representation_batch_size: 2048
+
+encoder:
+  method: terel_residual
+  hidden_dims: [128, 64]
+  activation: relu
+  normalization: none
+  training_mode: joint
+  epochs: 2
+  batch_size: 1
+  order_mode: chronological
+  chunk_size: 16
+  optimizer: plain_sgd
+  learning_rate: 0.00001934669330872145
+  weight_decay: 0.000001
+  similarity_coefficient: 2.0557344244809137
+  variance_coefficient: 3.0935554386629462
+  covariance_coefficient: 0.036157338275124226
+  variance_target: 1.0602982596796813
+  statistics_momentum: 0.995
+  lateral_momentum: 0.999
+  residual_lateral_rule: dual_inhibitory
+  residual_lateral_coefficient: 0.2950705362832128
+  residual_lateral_steps: 1
+  residual_lateral_step_size: 0.1
+  residual_lateral_include_diagonal: true
+  residual_lateral_moment_normalization: none
+  residual_lateral_signal_offset: 0
+  postsynaptic_state_mode: exact
+  lateral_matrix_mode: combined
+  combined_lateral_state_weight: 0.5911099660677379
+  temporal_term_enabled: true
+  inference_mode: offline

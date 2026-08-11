@@ -1,0 +1,26 @@
+protocol_version: strengthening2-final-v1
+selection_split: validation
+evaluation_split: test
+selection_seeds: [401, 402, 403]
+evaluation_seeds: [1101, 1202, 1303, 1404, 1505]
+dataset:
+  name: MNIST
+  validation_size: 10000
+  split_seed: 1701
+representation_readout: concatenated_layers
+probe:
+  epochs: 60
+  batch_size: 2048
+  optimizer: adamw
+  learning_rate: 0.003
+  weight_decay: 0.0001
+selection_rules:
+  local: >-
+    Require mathematical fidelity and noncollapse, then prefer a one-matrix
+    rule retaining a state-state anti-Hebbian contribution when repeated
+    representation quality is not weakened.
+  offline: >-
+    Select the strongest repeated configuration satisfying the specified ReLU,
+    no-normalization, subsequence-backpropagation, momentum-SGD, and nonzero
+    weight-decay design.
+reported_uncertainty: sample_standard_deviation_and_paired_student_t_interval
