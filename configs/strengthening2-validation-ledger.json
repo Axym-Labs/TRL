@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "selection_complete": true,
+  "heldout_accessed": false,
+  "selection_split": "MNIST train-derived validation",
+  "selection_seeds": [401, 402, 403],
+  "search": {
+    "local_budget_per_family": 12,
+    "local_development_seed": 311,
+    "local_sampler_seeds": {
+      "state_shared": 4201,
+      "combined": 4202,
+      "representation_shared": 4203,
+      "two_matrix": 4204
+    },
+    "offline_base_budget": 32,
+    "offline_momentum_extension_budget": 32,
+    "offline_development_seed": 311,
+    "offline_sampler_seeds": [4301, 4302],
+    "failed_and_collapsed_trials_count_toward_budget": true
+  },
+  "local_candidates": {
+    "combined_trial_000": {
+      "accuracy": {
+        "values": [0.9648, 0.9622, 0.9625],
+        "mean": 0.9631666666666666,
+        "sample_sd": 0.001422439219556762
+      },
+      "effective_rank": {
+        "values": [88.03340242596853, 90.72233989027225, 90.86102223190753],
+        "mean": 89.87225484938278
+      },
+      "median_feature_variance": {
+        "values": [0.5445971869187327, 0.5531352614720084, 0.5373349122080754],
+        "mean": 0.5450224535329388
+      }
+    },
+    "representation_shared_trial_002": {
+      "accuracy": {
+        "values": [0.9559, 0.9581, 0.9582],
+        "mean": 0.9574,
+        "sample_sd": 0.0013
+      }
+    },
+    "two_matrix_trial_000": {
+      "role": "protected canonical point",
+      "accuracy": {
+        "values": [0.9572, 0.9574, 0.9583],
+        "mean": 0.9576333333333333,
+        "sample_sd": 0.0005859465277082301
+      }
+    },
+    "two_matrix_trial_003": {
+      "role": "strongest repeated two-matrix screen candidate",
+      "accuracy": {
+        "values": [0.9575, 0.9605, 0.9626],
+        "mean": 0.9602,
+        "sample_sd": 0.0025632011235952566
+      }
+    },
+    "two_matrix_trial_005": {
+      "accuracy": {
+        "values": [0.9588, 0.9561, 0.9576],
+        "mean": 0.9575,
+        "sample_sd": 0.0013527749258468876
+      }
+    },
+    "state_shared": {
+      "status": "rejected",
+      "reason": "Ten of twelve trials became non-finite; the two finite trials did not preserve representation quality.",
+      "finite_trial_accuracies": [0.932, 0.9344],
+      "finite_trial_effective_ranks": [16.545000538531788, 15.689471040553117]
+    }
+  },
+  "local_selection": {
+    "selected_configuration_id": "terel-combined-trial-000",
+    "reason": "This one-matrix rule retains an explicit state-state anti-Hebbian contribution, is noncollapsed, and has the strongest repeated mean among the structurally valid local candidates.",
+    "paired_accuracy_difference_from_representation_shared": {
+      "values": [0.0089, 0.0041, 0.0043],
+      "mean": 0.005766666666666667,
+      "sample_sd": 0.002715388247255494
+    },
+    "paired_accuracy_difference_from_best_two_matrix": {
+      "values": [0.0073, 0.0017, -0.0001],
+      "mean": 0.002966666666666667,
+      "sample_sd": 0.003859188170241656
+    },
+    "configuration": {
+      "activation": "relu",
+      "normalization": "none",
+      "learning_rate": 0.013870266872900201,
+      "weight_decay": 0.000001,
+      "similarity_coefficient": 1.0,
+      "variance_coefficient": 3.001981471213246,
+      "covariance_coefficient": 0.6061334936982908,
+      "variance_target": 1.0,
+      "statistics_momentum": 0.99,
+      "lateral_momentum": 0.995,
+      "residual_lateral_coefficient": 0.5749502865863861,
+      "residual_lateral_steps": 1,
+      "residual_lateral_step_size": 0.1,
+      "residual_lateral_signal_offset": 0,
+      "postsynaptic_state_mode": "exact",
+      "lateral_matrix_mode": "combined",
+      "combined_lateral_state_weight": 0.5911099660677379,
+      "residual_lateral_moment_normalization": "none"
+    },
+    "resource_audit": {
+      "causal_state": "three scalars per neuron plus one sequence-valid flag per layer",
+      "auxiliary_parameters": "one D-by-D lateral matrix per layer",
+      "mnist_encoder_causal_state_numel": 2306,
+      "mnist_encoder_auxiliary_parameter_numel": 327680,
+      "mnist_encoder_feedforward_parameter_numel": 533248,
+      "optimizer_state_numel": 0
+    }
+  },
+  "offline_candidates": {
+    "trial_015": {
+      "weight_decay": 0.0,
+      "accuracy": {
+        "values": [0.9834, 0.9831, 0.9837],
+        "mean": 0.9834,
+        "sample_sd": 0.0003
+      }
+    },
+    "trial_018": {
+      "weight_decay": 0.000001,
+      "accuracy": {
+        "values": [0.9823, 0.9821, 0.983],
+        "mean": 0.9824666666666667,
+        "sample_sd": 0.0004725815626252714
+      }
+    },
+    "trial_019": {
+      "weight_decay": 0.0001,
+      "accuracy": {
+        "values": [0.9826, 0.9817, 0.9823],
+        "mean": 0.9822,
+        "sample_sd": 0.000458257569495582
+      }
+    }
+  },
+  "offline_selection": {
+    "selected_configuration_id": "terel-offline-trial-018",
+    "reason": "Trial 18 is the strongest repeated configuration satisfying the predeclared nonzero coupled-weight-decay design. Trial 15 is the strongest unconstrained repeated point but has zero weight decay.",
+    "configuration": {
+      "activation": "relu",
+      "normalization": "none",
+      "epochs": 20,
+      "batch_size": 128,
+      "optimizer": "sgd",
+      "optimizer_momentum": 0.95,
+      "learning_rate": 0.010943651646100146,
+      "weight_decay": 0.000001,
+      "similarity_coefficient": 1.0,
+      "variance_coefficient": 2.5299242416163943,
+      "covariance_coefficient": 0.021847119973486238,
+      "variance_target": 0.8627892708624838
+    }
+  }
+}
