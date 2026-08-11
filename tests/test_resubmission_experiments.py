@@ -241,9 +241,7 @@ def test_paired_inference_uses_one_checkpoint_and_one_fitted_probe():
     assert paired["same_trained_checkpoint"] is True
     assert paired["same_fitted_probe"] is True
     assert paired["offline"]["metrics"] == result["metrics"]
-    assert paired["online"]["metrics"]["support"] == len(
-        _toy_splits().validation
-    )
+    assert paired["online"]["metrics"]["support"] == len(_toy_splits().validation)
     assert paired["accuracy_difference"] == pytest.approx(
         paired["online"]["metrics"]["accuracy"]
         - paired["offline"]["metrics"]["accuracy"]
