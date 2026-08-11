@@ -42,7 +42,10 @@ def _summary_by_seed(values: dict[int, float]) -> dict:
 
 def _numeric_diagnostic_summaries(seed_records: dict[int, dict]) -> dict:
     shared = set.intersection(
-        *(set(record.get("representation_diagnostics", {})) for record in seed_records.values())
+        *(
+            set(record.get("representation_diagnostics", {}))
+            for record in seed_records.values()
+        )
     )
     summaries = {}
     for name in sorted(shared):
@@ -56,6 +59,83 @@ def _numeric_diagnostic_summaries(seed_records: dict[int, dict]) -> dict:
         ):
             summaries[name] = _summary_by_seed(by_seed)
     return summaries
+
+
+def analyze_online_continuation(
+    results_directory,
+    *,
+    expected_seeds=(1101, 1202, 1303, 1404, 1505),
+) -> dict:
+    """Summarize a paired fixed-versus-online continuation evaluation."""
+    results_directory = Path(results_directory)
+    expected_seeds = tuple(int(seed) for seed in expected_seeds)
+    seed_records = {}
+    for path in sorted(results_directory.glob("seed-*.json")):
+        record = json.loads(path.read_text())
+        seed = int(record["seed"])
+        if seed in seed_records:
+            raise ValueError(f"duplicate online continuation seed: {seed}")
+        seed_records[seed] = record
+    if tuple(sorted(seed_records)) != expected_seeds:
+        raise ValueError(
+            f"online continuation does not contain exactly seeds {expected_seeds}"
+        )
+
+    paired_records = {
+        seed: seed_records[seed]["paired_inference"] for seed in expected_seeds
+    }
+    if not all(
+        record.get("same_trained_checkpoint") and record.get("same_fitted_probe")
+        for record in paired_records.values()
+    ):
+        raise ValueError("online continuation comparison is not paired")
+
+    def paired_values(path):
+        side, category, name = path
+        return {
+            seed: float(paired_records[seed][side][category][name])
+            for seed in expected_seeds
+        }
+
+    offline_accuracy = paired_values(("offline", "metrics", "accuracy"))
+    online_accuracy = paired_values(("online", "metrics", "accuracy"))
+    offline_rank = paired_values(
+        ("offline", "representation_diagnostics", "effective_rank")
+    )
+    online_rank = paired_values(
+        ("online", "representation_diagnostics", "effective_rank")
+    )
+    audit_records = {
+        seed: seed_records[seed]["online_inference"] for seed in expected_seeds
+    }
+    return {
+        "offline_accuracy": _summary_by_seed(offline_accuracy),
+        "online_accuracy": _summary_by_seed(online_accuracy),
+        "accuracy_difference": _summary_by_seed(
+            {
+                seed: online_accuracy[seed] - offline_accuracy[seed]
+                for seed in expected_seeds
+            }
+        ),
+        "effective_rank_difference": _summary_by_seed(
+            {seed: online_rank[seed] - offline_rank[seed] for seed in expected_seeds}
+        ),
+        "parameter_delta_l2": _summary_by_seed(
+            {
+                seed: float(audit_records[seed]["parameter_delta_l2"])
+                for seed in expected_seeds
+            }
+        ),
+        "lateral_delta_l2": _summary_by_seed(
+            {
+                seed: float(audit_records[seed]["lateral_delta_l2"])
+                for seed in expected_seeds
+            }
+        ),
+        "mean_loss": _summary_by_seed(
+            {seed: float(audit_records[seed]["mean_loss"]) for seed in expected_seeds}
+        ),
+    }
 
 
 def analyze_final_results(
@@ -110,8 +190,7 @@ def analyze_final_results(
         )
 
     paired_records = {
-        seed: records[("terel", seed)]["paired_inference"]
-        for seed in expected_seeds
+        seed: records[("terel", seed)]["paired_inference"] for seed in expected_seeds
     }
     if not all(
         record.get("same_trained_checkpoint") and record.get("same_fitted_probe")
@@ -136,8 +215,7 @@ def analyze_final_results(
         for seed, record in paired_records.items()
     }
     online_audit_records = {
-        seed: records[("terel", seed)]["online_inference"]
-        for seed in expected_seeds
+        seed: records[("terel", seed)]["online_inference"] for seed in expected_seeds
     }
     failures = {}
     if failure_ledger is not None:
@@ -206,8 +284,7 @@ def analyze_capture24_order(
                 f"{expected_seeds}"
             )
         macro_f1 = {
-            seed: float(records[seed]["metrics"]["macro_f1"])
-            for seed in expected_seeds
+            seed: float(records[seed]["metrics"]["macro_f1"]) for seed in expected_seeds
         }
         conditions[condition] = {
             "macro_f1": _summary_by_seed(macro_f1),
@@ -234,9 +311,7 @@ def analyze_capture24_order(
         "expected_seeds": list(expected_seeds),
         "conditions": conditions,
         "contrasts": {
-            "chronological-minus-shuffled": paired_contrast(
-                chronological, shuffled
-            ),
+            "chronological-minus-shuffled": paired_contrast(chronological, shuffled),
             "chronological-minus-random": paired_contrast(chronological, random),
         },
     }

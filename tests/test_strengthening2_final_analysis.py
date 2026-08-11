@@ -5,6 +5,7 @@ import pytest
 from terel.resubmission.strengthening2_analysis import (
     analyze_capture24_order,
     analyze_final_results,
+    analyze_online_continuation,
 )
 
 
@@ -78,12 +79,24 @@ def test_final_analysis_reports_paired_mechanisms_online_effect_and_failures(tmp
     )
 
     assert analysis["methods"]["terel"]["accuracy"]["mean"] == pytest.approx(0.965)
-    assert analysis["contrasts"]["terel-minus-random"]["mean_difference"] == pytest.approx(0.06)
-    assert analysis["contrasts"]["terel-minus-shuffled-order"]["mean_difference"] == pytest.approx(0.03)
-    assert analysis["online_continuation"]["accuracy_difference"]["mean"] == pytest.approx(-0.30)
-    assert analysis["online_continuation"]["online_accuracy"]["mean"] == pytest.approx(0.665)
-    assert analysis["online_continuation"]["effective_rank_difference"]["mean"] == pytest.approx(-60.0)
-    assert analysis["online_continuation"]["parameter_delta_l2"]["mean"] == pytest.approx(3.0)
+    assert analysis["contrasts"]["terel-minus-random"][
+        "mean_difference"
+    ] == pytest.approx(0.06)
+    assert analysis["contrasts"]["terel-minus-shuffled-order"][
+        "mean_difference"
+    ] == pytest.approx(0.03)
+    assert analysis["online_continuation"]["accuracy_difference"][
+        "mean"
+    ] == pytest.approx(-0.30)
+    assert analysis["online_continuation"]["online_accuracy"]["mean"] == pytest.approx(
+        0.665
+    )
+    assert analysis["online_continuation"]["effective_rank_difference"][
+        "mean"
+    ] == pytest.approx(-60.0)
+    assert analysis["online_continuation"]["parameter_delta_l2"][
+        "mean"
+    ] == pytest.approx(3.0)
     assert analysis["failures"]["no-covariance"]["status"] == "non-finite"
 
 
@@ -124,3 +137,36 @@ def test_capture24_order_analysis_uses_seed_paired_macro_f1(tmp_path):
     effect = analysis["contrasts"]["chronological-minus-shuffled"]
     assert effect["mean_difference"] == pytest.approx(0.055)
     assert analysis["conditions"]["random"]["macro_f1"]["mean"] == pytest.approx(0.335)
+
+
+def test_online_continuation_analysis_uses_separate_paired_results(tmp_path):
+    for seed, offline, online in ((11, 0.96, 0.961), (22, 0.97, 0.969)):
+        record = {
+            "seed": seed,
+            "online_inference": {
+                "parameter_delta_l2": 0.05,
+                "lateral_delta_l2": 22.0,
+                "mean_loss": 0.8,
+            },
+            "paired_inference": {
+                "same_trained_checkpoint": True,
+                "same_fitted_probe": True,
+                "offline": {
+                    "metrics": {"accuracy": offline},
+                    "representation_diagnostics": {"effective_rank": 90.0},
+                },
+                "online": {
+                    "metrics": {"accuracy": online},
+                    "representation_diagnostics": {"effective_rank": 90.5},
+                },
+            },
+        }
+        (tmp_path / f"seed-{seed}.json").write_text(json.dumps(record))
+
+    analysis = analyze_online_continuation(tmp_path, expected_seeds=(11, 22))
+
+    assert analysis["offline_accuracy"]["mean"] == pytest.approx(0.965)
+    assert analysis["online_accuracy"]["mean"] == pytest.approx(0.965)
+    assert analysis["accuracy_difference"]["mean"] == pytest.approx(0.0)
+    assert analysis["effective_rank_difference"]["mean"] == pytest.approx(0.5)
+    assert analysis["parameter_delta_l2"]["mean"] == pytest.approx(0.05)

@@ -9,6 +9,7 @@ from pathlib import Path
 from terel.resubmission.strengthening2_analysis import (
     analyze_capture24_order,
     analyze_final_results,
+    analyze_online_continuation,
 )
 
 
@@ -16,6 +17,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results", type=Path, required=True)
     parser.add_argument("--failure-ledger", type=Path)
+    parser.add_argument("--online-continuation-results", type=Path)
     parser.add_argument("--capture24-order-results", type=Path)
     parser.add_argument("--capture24-order-seeds", type=int, nargs="+")
     parser.add_argument(
@@ -32,6 +34,10 @@ def main() -> None:
             failure_ledger=arguments.failure_ledger,
         )
     }
+    if arguments.online_continuation_results is not None:
+        analysis["mnist"]["online_continuation"] = analyze_online_continuation(
+            arguments.online_continuation_results
+        )
     if arguments.capture24_order_results is not None:
         analysis["capture24_order"] = analyze_capture24_order(
             arguments.capture24_order_results,

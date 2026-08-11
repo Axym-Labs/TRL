@@ -1,27 +1,29 @@
 # Temporal Regularized Learning (TeReL)
 
-TeReL learns deep slow features one observation at a time. A soft Slow Feature
-Analysis objective defines a detached regularized target. Each neuron tracks
-its preactivation residual to that target; presynaptic activity and the
-postsynaptic neuron state give the exact feedforward gradient before lateral
-inhibition. One pass through a learned inhibitory operator modifies this state,
-and pairs of the same states drive an anti-Hebbian lateral update. No error
-crosses a learned layer or persists through time.
+TeReL learns deep slow features one observation at a time. At each layer, a
+soft Slow Feature Analysis objective defines a detached activation target. Its
+exact ReLU preactivation residual becomes a signed postsynaptic neuron state.
+The feedforward gradient then factors into this state and the presynaptic
+activity; one same-layer matrix supplies an explicit correction and receives
+an anti-Hebbian state--state contribution. No error signal crosses a learned
+layer or persists through time.
 
-On label-ordered MNIST, TeReL reaches 95.84 ± 0.07% accuracy after two data
-presentations using plain SGD, batch size one, and one lateral matrix-vector
-pass. The pass improves an otherwise identical no-inhibition reference by 1.42
-points on validation (95% Student-t interval [1.32, 1.52]). TeReL-Offline, a
-less constrained minibatch reference with short temporal graphs and BatchNorm,
-reaches 97.30 ± 0.07%. The paper treats label-derived adjacency as controlled
-temporal supervision, not as unlabeled self-supervision.
+On a class-chunked MNIST stream, the reported `784 → 512 → 256` encoder reaches
+**96.39 ± 0.19%** held-out linear-probe accuracy with plain SGD, batch size
+one, and two presentations of the encoder-training observations. Random
+features reach 95.14 ± 0.27%, Layer-local SupCon reaches 96.95 ± 0.13%, and
+the spatially and temporally relaxed TeReL-Offline reference reaches
+98.39 ± 0.04%. Continued unlabeled updates with the validation-selected step
+reach 96.43 ± 0.15% using the same fitted probe.
 
-Exact execution identifiers and checksums belong in
-[`ARTIFACT_README.md`](ARTIFACT_README.md).
+The experiment uses class labels only to construct temporal adjacency; labels
+do not enter TeReL's target or synaptic updates. The paper therefore treats
+this order as a controlled temporal relation, not as evidence for arbitrary
+natural streams.
 
-## Quick start
+## Install and verify
 
-Python 3.12 and all direct dependencies are pinned in `pyproject.toml` and
+Python 3.12 and direct dependencies are pinned in `pyproject.toml` and
 `uv.lock`.
 
 ```bash
@@ -29,79 +31,55 @@ uv sync --extra test
 uv run pytest -q
 ```
 
-The tests cover target-gradient equivalence, the preactivation outer product,
-the inhibitory sign and one-pass dynamics, same-state lateral learning,
-cross-layer and temporal detachment, resource accounting, data roles,
-baselines, and frozen-protocol integrity.
+The tests cover target--gradient equivalence, the neuron-local outer product,
+the anti-Hebbian sign, the single explicit correction, detachment across
+layers and observations, one-matrix resource accounting, evaluation roles,
+and manifest integrity.
 
-## Canonical samplewise protocol
+## Method and resource boundary
 
-Set `data_root` in `configs/canonical-online-learning.yaml`, then run a declared
-validation candidate. The selected configuration
-is `terel-online`; `configs/canonical-online-mechanism.yaml` defines its matched
-no-inhibition control.
+For each neuron, TeReL retains the preceding activation `p`, running mean `μ`,
+and running variance `v`. A layer of width `D` therefore has `3D` causal
+scalars and one sequence-validity bit. It also has one `D × D` matrix of
+auxiliary lateral parameters, distinct from both causal state and feedforward
+weights. Plain SGD adds no optimizer state. The same-layer correction is one
+matrix--vector operation, not iterative settling.
 
-```bash
-uv run python -m terel.resubmission.canonical_validation \
-  --config configs/canonical-online-learning.yaml \
-  --candidate terel-online \
-  --seed 101 \
-  --output artifacts/canonical-online-validation \
-  --device cuda
-```
+For the reported encoder, this gives 2,306 causal scalars, 327,680 auxiliary
+lateral parameters, and 533,248 feedforward parameters. Dense same-layer
+communication remains a real cost; locality here describes credit assignment,
+not neuron independence or biological realism.
 
-The selection ledger records the fixed validation comparison and resource
-accounting. A confirmatory manifest can be frozen only from a clean repository:
+## Reproduce the reported analysis
 
-```bash
-uv run python -m terel.resubmission.residual_confirmatory freeze \
-  --selection-plan configs/canonical-online-learning.yaml \
-  --validation-ledger configs/canonical-online-validation-ledger.json \
-  --protocol docs/canonical-online-protocol.md \
-  --repository . \
-  --output artifacts/canonical-online-confirmatory-manifest.json
-```
-
-Combine final records with the matched validation mechanism records using:
+The complete comparison is declared in
+[`configs/strengthening2-final-matrix.yaml`](configs/strengthening2-final-matrix.yaml),
+and continued online evaluation is declared in
+[`configs/strengthening2-online-continuation.yaml`](configs/strengthening2-online-continuation.yaml).
+Held-out execution is guarded by a clean-repository manifest and an explicit
+authorization flag. Given the archived records, regenerate all reported
+summaries with:
 
 ```bash
-uv run python -m terel.resubmission.canonical_online_analysis \
-  --final artifacts/canonical-online-confirmatory-results/mnist/terel-online \
-  --inhibited-validation artifacts/canonical-online-validation-results/inhibition \
-  --reference-validation artifacts/canonical-online-validation-results/no-inhibition \
-  --output artifacts/canonical-online-analysis.json
+uv run python analysis/strengthening2_final_results.py \
+  --results artifacts/final-results \
+  --failure-ledger artifacts/final-results/failures.json \
+  --online-continuation-results \
+    artifacts/online-continuation-final-results/mnist/terel-online-scaled \
+  --output artifacts/strengthening2-final-analysis-mnist.json
 ```
 
-## Resource boundary
-
-At width `D`, the canonical path stores three causal scalars per neuron: the
-preceding activation, running mean, and running variance. One validity flag is
-stored per layer. The representation and residual-state operators are two
-`D × D` auxiliary parameter matrices; they are weights, not temporal state.
-For the 784→512→256 encoder this is 2,304 causal neuron scalars in total and
-two layer flags, 655,360 auxiliary parameters, and 533,248 feedforward
-parameters. Plain SGD adds no optimizer state. Each observation applies the
-two auxiliary operators once and forms two rank-one updates.
-
-Locality permits dense same-layer communication. It does not imply neuron
-independence, biological realism, low energy, or efficient dense hardware.
-TeReL-Offline is a performance reference rather than a matched locality
-control because it also changes batching, normalization, schedule, and
-optimization.
-
-## Supporting evidence
-
-The repository retains protocols for TeReL-Offline, Local SupCon,
-normalization-matched random features, direct covariance, objective ablations,
-classical SFA, and incremental SFA. Their stable identifiers and
-analysis commands are documented in `ARTIFACT_README.md`; the manuscript uses
-scientific names rather than internal run labels.
+Execution commits, manifest hashes, and record digests are kept in
+[`ARTIFACT_README.md`](ARTIFACT_README.md), rather than in the manuscript.
 
 ## Repository layout
 
 ```text
-terel/resubmission/                 method, baselines, analyses, and protocol gates
-configs/                            canonical and supporting configurations
-docs/                               scientific protocol records
-tests/                              mathematical and implementation-fidelity tests
+terel/resubmission/   method, baselines, evaluation, and protocol gates
+analysis/             final analysis and figure-data utilities
+configs/              selected protocols and supporting controls
+tests/                mathematical and implementation-fidelity tests
 ```
+
+The manuscript is available from the DOI listed on its first page. Please cite
+that version when using the method or results.
