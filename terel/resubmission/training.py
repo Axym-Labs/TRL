@@ -293,6 +293,7 @@ def train_local_encoder(
     postsynaptic_state_mode: str = "exact",
     lateral_matrix_mode: str = "two_matrix",
     combined_lateral_state_weight: float = 0.5,
+    temporal_term_enabled: bool = True,
 ) -> EncoderTrainingSummary:
     """Train a TeReL encoder and return the fidelity/compute audit record."""
     if epochs <= 0:
@@ -384,6 +385,7 @@ def train_local_encoder(
                     postsynaptic_state_mode=postsynaptic_state_mode,
                     lateral_matrix_mode=lateral_matrix_mode,
                     combined_lateral_state_weight=combined_lateral_state_weight,
+                    temporal_term_enabled=temporal_term_enabled,
                 )
                 for layer_index in range(len(model.layers)):
                     prefix = f"layer_{layer_index}/lateral_proxy_"
@@ -556,6 +558,8 @@ def local_train_step(
     postsynaptic_state_mode: str = "exact",
     lateral_matrix_mode: str = "two_matrix",
     combined_lateral_state_weight: float = 0.5,
+    temporal_term_enabled: bool = True,
+    neuron_state_collector: list[tuple[int, torch.Tensor]] | None = None,
 ) -> dict[str, float]:
     """Apply one optimizer step using independent per-layer TeReL losses."""
     model.train()
@@ -611,7 +615,8 @@ def local_train_step(
     else:
         selected = ((layer_details[-1], model.states[active_layer]),)
     selected = tuple(selected)
-    for (preactivation, _, z), state in selected:
+    for selected_index, ((preactivation, _, z), state) in enumerate(selected):
+        layer_index = selected_index if active_layer is None else active_layer
         previous, valid = temporal_references(
             z,
             state=state,
@@ -654,6 +659,7 @@ def local_train_step(
                 coefficients=coefficients,
                 variance_target=variance_target,
                 lateral_reference=lateral_reference,
+                temporal_term_enabled=temporal_term_enabled,
             )
             base_neuron_state = postsynaptic_learning_state(
                 preactivation=preactivation,
@@ -676,6 +682,7 @@ def local_train_step(
                     coefficients=coefficients,
                     variance_target=variance_target,
                     lateral_reference=lateral_reference,
+                    temporal_term_enabled=temporal_term_enabled,
                 )
                 component_states = {
                     name: torch.autograd.grad(
@@ -744,6 +751,10 @@ def local_train_step(
             metrics["residual_dynamics_delta_rms"] = (
                 (base_neuron_state - neuron_state).square().mean().sqrt()
             )
+            if neuron_state_collector is not None:
+                neuron_state_collector.append(
+                    (layer_index, neuron_state.detach().cpu().clone())
+                )
             for name, component_state in component_states.items():
                 metrics[name + "_state_rms"] = component_state.square().mean().sqrt()
             losses.append(loss)

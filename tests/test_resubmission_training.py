@@ -648,3 +648,38 @@ def test_zero_coupling_residual_state_matches_fixed_affine_streaming_norm_update
         atol=1e-7,
         rtol=1e-6,
     )
+
+
+def test_residual_step_can_expose_the_neuron_states_used_for_learning():
+    model = LayerLocalEncoder(
+        input_dim=2,
+        hidden_dims=(3, 2),
+        activation="relu",
+        normalization="none",
+        statistics_momentum=0.9,
+        lateral_momentum=0.9,
+    )
+    optimizer = torch.optim.SGD(model.encoder_parameters(), lr=0.001)
+    collected = []
+
+    metrics = local_train_step(
+        model=model,
+        optimizer=optimizer,
+        x=torch.tensor([[1.0, -1.0]]),
+        boundaries=torch.tensor([True]),
+        coefficients=LossCoefficients(),
+        variance_target=1.0,
+        detach_previous=True,
+        covariance_mode="residual_state",
+        lateral_matrix_mode="combined",
+        neuron_state_collector=collected,
+    )
+
+    assert [layer for layer, _ in collected] == [0, 1]
+    assert [tuple(state.shape) for _, state in collected] == [(1, 3), (1, 2)]
+    for layer, state in collected:
+        expected_rms = state.square().mean().sqrt()
+        assert metrics[f"layer_{layer}/residual_state_rms"] == pytest.approx(
+            float(expected_rms)
+        )
+        assert state.requires_grad is False

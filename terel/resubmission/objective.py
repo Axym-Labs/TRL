@@ -138,6 +138,7 @@ def regularized_target_components(
     coefficients: LossCoefficients,
     variance_target: float,
     lateral_reference: torch.Tensor | None = None,
+    temporal_term_enabled: bool = True,
 ) -> dict[str, torch.Tensor]:
     """Return the three detached contributions to the regularized target residual."""
     if coefficients.similarity <= 0.0:
@@ -176,8 +177,11 @@ def regularized_target_components(
     variance_gate = F.relu(
         torch.as_tensor(variance_target, device=z.device, dtype=z.dtype) - variance
     )
+    temporal = pair_weight[:, None] * (values - previous)
+    if not temporal_term_enabled:
+        temporal = torch.zeros_like(temporal)
     return {
-        "temporal": (pair_weight[:, None] * (values - previous)).detach(),
+        "temporal": temporal.detach(),
         "variance": (
             -(coefficients.variance / coefficients.similarity)
             * variance_gate
@@ -201,6 +205,7 @@ def regularized_target_residual(
     coefficients: LossCoefficients,
     variance_target: float,
     lateral_reference: torch.Tensor | None = None,
+    temporal_term_enabled: bool = True,
 ):
     """Construct the detached target whose residual gives the samplewise gradient."""
     components = regularized_target_components(
@@ -213,6 +218,7 @@ def regularized_target_residual(
         coefficients=coefficients,
         variance_target=variance_target,
         lateral_reference=lateral_reference,
+        temporal_term_enabled=temporal_term_enabled,
     )
     residual = sum(components.values()).detach()
     values = z.detach()

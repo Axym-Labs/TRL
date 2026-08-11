@@ -6,6 +6,7 @@ from terel.resubmission.objective import (
     direct_offdiagonal_covariance_loss,
     lateral_proxy_error_bound,
     offline_soft_sfa_loss,
+    regularized_target_components,
     temporal_references,
     terel_loss,
 )
@@ -148,6 +149,30 @@ def test_covariance_proxy_can_use_an_explicit_shifted_reference():
     )
 
     assert torch.allclose(loss, torch.tensor(5.5))
+
+
+def test_target_can_ablate_temporal_term_without_rescaling_other_terms():
+    arguments = {
+        "z": torch.tensor([[1.0, 2.0]]),
+        "previous": torch.tensor([[0.0, 0.0]]),
+        "mean": torch.zeros(2),
+        "variance": torch.zeros(2),
+        "lateral": torch.tensor([[0.0, 0.5], [0.5, 0.0]]),
+        "pair_valid": torch.tensor([True]),
+        "coefficients": LossCoefficients(
+            similarity=1.0, variance=2.0, covariance=0.5
+        ),
+        "variance_target": 1.0,
+    }
+
+    full = regularized_target_components(**arguments)
+    ablated = regularized_target_components(
+        **arguments, temporal_term_enabled=False
+    )
+
+    assert torch.equal(ablated["temporal"], torch.zeros_like(full["temporal"]))
+    assert torch.equal(ablated["variance"], full["variance"])
+    assert torch.equal(ablated["covariance"], full["covariance"])
 
 
 def test_offline_soft_sfa_uses_only_valid_within_subsequence_pairs():

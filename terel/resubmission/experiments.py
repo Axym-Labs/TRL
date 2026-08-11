@@ -80,6 +80,7 @@ class EncoderExperimentConfig:
     postsynaptic_state_mode: str = "exact"
     lateral_matrix_mode: str = "two_matrix"
     combined_lateral_state_weight: float = 0.5
+    temporal_term_enabled: bool = True
 
 
 @dataclass(frozen=True)
@@ -385,9 +386,9 @@ def run_representation_experiment(
         )
     if probe.readout not in {"last", "all"}:
         raise ValueError("probe readout must be 'last' or 'all'")
-    if encoder.inference_mode not in {"offline", "online"}:
-        raise ValueError("inference_mode must be 'offline' or 'online'")
-    if encoder.inference_mode == "online" and encoder.method not in {
+    if encoder.inference_mode not in {"offline", "online", "paired"}:
+        raise ValueError("inference_mode must be 'offline', 'online', or 'paired'")
+    if encoder.inference_mode in {"online", "paired"} and encoder.method not in {
         "terel_local",
         "terel_direct",
         "terel_shift",
@@ -407,6 +408,7 @@ def run_representation_experiment(
     probe_training = None
     optimizer = None
     online_inference = None
+    paired_inference = None
     causal_dynamic_state_bytes = 0
     auxiliary_parameter_bytes = 0
 
@@ -500,6 +502,7 @@ def run_representation_experiment(
                     combined_lateral_state_weight=(
                         encoder.combined_lateral_state_weight
                     ),
+                    temporal_term_enabled=encoder.temporal_term_enabled,
                 )
         elif encoder.batch_norm_calibration_passes:
             normalization_calibration = calibrate_batch_normalization(
@@ -541,7 +544,8 @@ def run_representation_experiment(
             weight_decay=probe.weight_decay,
             device=device,
         )
-        if encoder.inference_mode == "online":
+        if encoder.inference_mode in {"online", "paired"}:
+            offline_evaluation_representations = evaluation_representations
             order, boundaries = encoder_order(
                 evaluation_dataset,
                 order_mode=encoder.order_mode,
@@ -584,11 +588,53 @@ def run_representation_experiment(
                     combined_lateral_state_weight=(
                         encoder.combined_lateral_state_weight
                     ),
+                    temporal_term_enabled=encoder.temporal_term_enabled,
                 )
             )
             evaluation_probe_representations, evaluation_probe_labels = _probe_view(
                 evaluation_representations, evaluation_dataset
             )
+            if encoder.inference_mode == "paired":
+                offline_probe_representations, offline_probe_labels = _probe_view(
+                    offline_evaluation_representations, evaluation_dataset
+                )
+                with torch.no_grad():
+                    offline_logits = linear_probe(
+                        offline_probe_representations.to(device)
+                    ).cpu()
+                    online_logits = linear_probe(
+                        evaluation_probe_representations.to(device)
+                    ).cpu()
+                offline_metrics = classification_metrics(
+                    offline_logits, offline_probe_labels, num_classes=num_classes
+                )
+                online_metrics = classification_metrics(
+                    online_logits, evaluation_probe_labels, num_classes=num_classes
+                )
+                paired_inference = {
+                    "same_trained_checkpoint": True,
+                    "same_fitted_probe": True,
+                    "offline": {
+                        "metrics": offline_metrics,
+                        "representation_diagnostics": representation_diagnostics(
+                            offline_evaluation_representations,
+                            evaluation_dataset.boundaries,
+                        ),
+                    },
+                    "online": {
+                        "metrics": online_metrics,
+                        "representation_diagnostics": representation_diagnostics(
+                            evaluation_representations,
+                            evaluation_dataset.boundaries,
+                        ),
+                    },
+                    "accuracy_difference": (
+                        online_metrics["accuracy"] - offline_metrics["accuracy"]
+                    ),
+                }
+                evaluation_representations = offline_evaluation_representations
+                evaluation_probe_representations = offline_probe_representations
+                evaluation_probe_labels = offline_probe_labels
         with torch.no_grad():
             logits = linear_probe(evaluation_probe_representations.to(device)).cpu()
         dynamic_state_bytes = _buffer_bytes(model) if method.startswith("terel_") else 0
@@ -924,6 +970,7 @@ def run_representation_experiment(
         "online_inference": asdict(online_inference)
         if online_inference is not None
         else None,
+        "paired_inference": paired_inference,
         "optimizer_dynamics": _optimizer_dynamics(
             encoder.optimizer,
             learning_rate=encoder.learning_rate,

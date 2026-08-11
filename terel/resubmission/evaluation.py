@@ -124,6 +124,7 @@ def extract_online_representations(
     postsynaptic_state_mode: str = "exact",
     lateral_matrix_mode: str = "two_matrix",
     combined_lateral_state_weight: float = 0.5,
+    temporal_term_enabled: bool = True,
 ):
     """Emit each representation, then apply TeReL before the next observation.
 
@@ -194,6 +195,7 @@ def extract_online_representations(
             postsynaptic_state_mode=postsynaptic_state_mode,
             lateral_matrix_mode=lateral_matrix_mode,
             combined_lateral_state_weight=combined_lateral_state_weight,
+            temporal_term_enabled=temporal_term_enabled,
         )
         loss_sum += metrics["loss"]
 

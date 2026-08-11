@@ -138,6 +138,37 @@ def test_one_matrix_residual_candidates_report_one_auxiliary_matrix(matrix_mode)
     assert result["resource_accounting"]["auxiliary_parameter_bytes"] == expected
 
 
+def test_canonical_one_matrix_rule_reports_three_scalars_per_neuron():
+    result = run_representation_experiment(
+        splits=_toy_splits(),
+        dataset_name="toy",
+        num_classes=2,
+        seed=107,
+        encoder=EncoderExperimentConfig(
+            method="terel_residual",
+            hidden_dims=(4, 2),
+            activation="relu",
+            epochs=1,
+            batch_size=1,
+            order_mode="chronological",
+            optimizer="plain_sgd",
+            learning_rate=0.001,
+            lateral_matrix_mode="combined",
+            residual_lateral_signal_offset=0,
+        ),
+        probe=_probe_config(),
+        evaluation_split="validation",
+        device=torch.device("cpu"),
+    )
+
+    widths = 4 + 2
+    flags = 2
+    float_bytes = torch.tensor(0.0).element_size()
+    assert result["resource_accounting"]["causal_dynamic_state_bytes"] == (
+        3 * widths * float_bytes + flags
+    )
+
+
 def test_adam_component_ablation_accepts_explicit_betas():
     parameter = torch.nn.Parameter(torch.tensor([1.0]))
     optimizer = experiments._optimizer(
@@ -181,6 +212,43 @@ def test_online_inference_continues_label_free_terel_after_probe_fitting():
     assert result["online_inference"]["optimizer_steps"] == len(
         _toy_splits().validation
     )
+
+
+def test_paired_inference_uses_one_checkpoint_and_one_fitted_probe():
+    result = run_representation_experiment(
+        splits=_toy_splits(),
+        dataset_name="toy",
+        num_classes=2,
+        seed=17,
+        encoder=EncoderExperimentConfig(
+            method="terel_residual",
+            hidden_dims=(3,),
+            activation="relu",
+            epochs=1,
+            batch_size=1,
+            order_mode="chronological",
+            optimizer="plain_sgd",
+            learning_rate=0.001,
+            inference_mode="paired",
+            lateral_matrix_mode="combined",
+        ),
+        probe=_probe_config(),
+        evaluation_split="validation",
+        device=torch.device("cpu"),
+    )
+
+    paired = result["paired_inference"]
+    assert paired["same_trained_checkpoint"] is True
+    assert paired["same_fitted_probe"] is True
+    assert paired["offline"]["metrics"] == result["metrics"]
+    assert paired["online"]["metrics"]["support"] == len(
+        _toy_splits().validation
+    )
+    assert paired["accuracy_difference"] == pytest.approx(
+        paired["online"]["metrics"]["accuracy"]
+        - paired["offline"]["metrics"]["accuracy"]
+    )
+    assert result["online_inference"]["labels_accessed"] is False
 
 
 def test_supervised_linear_reference_uses_raw_inputs_without_encoder_training():
