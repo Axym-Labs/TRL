@@ -251,6 +251,37 @@ def test_paired_inference_uses_one_checkpoint_and_one_fitted_probe():
     assert result["online_inference"]["labels_accessed"] is False
 
 
+def test_zero_scale_online_continuation_preserves_fixed_encoder_representations():
+    result = run_representation_experiment(
+        splits=_toy_splits(),
+        dataset_name="toy",
+        num_classes=2,
+        seed=17,
+        encoder=EncoderExperimentConfig(
+            method="terel_residual",
+            hidden_dims=(3,),
+            activation="relu",
+            epochs=1,
+            batch_size=1,
+            order_mode="chronological",
+            optimizer="plain_sgd",
+            learning_rate=0.001,
+            inference_mode="paired",
+            online_learning_rate_scale=0.0,
+            lateral_matrix_mode="combined",
+        ),
+        probe=_probe_config(),
+        evaluation_split="validation",
+        device=torch.device("cpu"),
+    )
+
+    assert result["online_inference"]["optimizer_steps"] == len(
+        _toy_splits().validation
+    )
+    assert result["online_inference"]["parameter_delta_l2"] == 0.0
+    assert result["paired_inference"]["accuracy_difference"] == 0.0
+
+
 def test_supervised_linear_reference_uses_raw_inputs_without_encoder_training():
     result = run_representation_experiment(
         splits=_toy_splits(),

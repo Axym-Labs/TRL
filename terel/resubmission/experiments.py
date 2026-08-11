@@ -77,6 +77,7 @@ class EncoderExperimentConfig:
     residual_lateral_coefficient: float = 0.5
     residual_lateral_signal_offset: int = 0
     inference_mode: str = "offline"
+    online_learning_rate_scale: float = 1.0
     postsynaptic_state_mode: str = "exact"
     lateral_matrix_mode: str = "two_matrix"
     combined_lateral_state_weight: float = 0.5
@@ -388,6 +389,8 @@ def run_representation_experiment(
         raise ValueError("probe readout must be 'last' or 'all'")
     if encoder.inference_mode not in {"offline", "online", "paired"}:
         raise ValueError("inference_mode must be 'offline', 'online', or 'paired'")
+    if encoder.online_learning_rate_scale < 0.0:
+        raise ValueError("online_learning_rate_scale must be nonnegative")
     if encoder.inference_mode in {"online", "paired"} and encoder.method not in {
         "terel_local",
         "terel_direct",
@@ -553,6 +556,8 @@ def run_representation_experiment(
                 chunk_size=encoder.chunk_size,
             )
             detach_previous, covariance_mode = resolve_terel_objective_mode(method)
+            for parameter_group in optimizer.param_groups:
+                parameter_group["lr"] *= encoder.online_learning_rate_scale
             evaluation_representations, online_inference = (
                 extract_online_representations(
                     model,

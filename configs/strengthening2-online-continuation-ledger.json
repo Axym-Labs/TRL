@@ -1,0 +1,24 @@
+{
+  "heldout_accessed": false,
+  "schema_version": 1,
+  "selected_configuration": {
+    "base_learning_rate": 0.013870266872900201,
+    "effective_learning_rate": 0.000013870266872900201,
+    "online_learning_rate_scale": 0.001,
+    "selection_reason": "This is the largest audited scale whose validation accuracy and effective rank match fixed-encoder evaluation."
+  },
+  "selection_complete": true,
+  "selection_evidence": {
+    "offline": {
+      "accuracy": 0.9618,
+      "effective_rank": 90.00868027025439
+    },
+    "selected_online": {
+      "accuracy": 0.9617,
+      "effective_rank": 90.41451549427296,
+      "parameter_delta_l2": 0.045873441323642156
+    }
+  },
+  "selection_seed": 1101,
+  "selection_split": "MNIST validation"
+}
